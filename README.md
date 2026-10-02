@@ -75,9 +75,10 @@ Ele integra as três camadas oficiais de interface e dados disponibilizados pela
 - **Suporte ao Modo ARAM (`Control + Shift + B` e `Control + Shift + D`)**: Troca no banco de reservas e rolagem de dados.
 - **Rotas no Saguão (`Control + Shift + O`)**: Configuração facilitada de preferências de rotas (*Top, Jungle, Mid, Bot, Sup*).
 
-### 8. Isolamento Estrito de Foco (Zero Key Hijacking)
-- **Sem Interceptação em Outros Aplicativos**: Os atalhos in-game só são processados quando a janela 3D da partida (`RiotWindowClass`) estiver em primeiro plano.
-- Teclas padrão do Windows e navegadores como `Control + Shift + T` (reabrir abas), `Control + Shift + N` (janela anônima), `Control + Shift + P` (paleta do VS Code) e `Alt + Espaço` continuam funcionando 100% normalmente em todos os outros programas.
+### 8. Isolamento Estrito de Foco e Proteção de Digitação (Zero Key Hijacking)
+- **Digitação 100% Nativa e Veloz em Todo o Windows**: O plugin global (`GlobalPlugin`) utiliza estritamente combinações com o modificador NVDA (`NVDA + Shift + ...` e `NVDA + F6`), sem jamais registrar teclas de letras simples soltas (`a-z`) no sistema.
+- **Teclas de Letras Simples Isoladas na Partida 3D**: Os atalhos `H` (Vida), `K` (KDA), `I` (Itens), `U` (Habilidades), `O` (Inimigos), `T` (Tempo), `M` (Radar), `P` (Loja), `B` (Recall) e `Alt + 1..4` pertencem exclusivamente ao módulo `appModules/leagueoflegends.py` e são desativados no exato instante em que você alterna para outro aplicativo.
+- **Zero Conflito com Navegadores e Editores**: Atalhos como `Control + Shift + T` (reabrir abas fechadas no Chrome/Firefox), `Control + Shift + P` (Paleta de Comandos no VS Code), `Control + Shift + N` (janela anônima) e `Alt + Espaço` funcionam com zero atraso e zero interferência em todo o sistema operacional.
 
 ---
 

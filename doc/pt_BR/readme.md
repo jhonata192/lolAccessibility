@@ -112,22 +112,22 @@ O **lolAccessibility** é um add-on completo para o leitor de telas **NVDA** que
 | `Control + Shift + F8` | Alternar **Alerta Automático de Emboscada / Gank** (Ligado / Desligado). |
 | `Control + Shift + F7` | Alternar **Leitura Automática de Pings e Chat** (Ligada / Desligada). |
 
-### Atalhos Globais (Qualquer janela no Windows)
+### Atalhos Globais (Funcionam de Qualquer Janela no Windows sem Conflitos)
 | Atalho | Ação |
 | :--- | :--- |
-| `Control + Shift + N` ou `NVDA + Shift + N` | Navegação rápida pelo minimapa (move para a rota do meio). |
-| `Control + Shift + M` ou `NVDA + Shift + M` | Varredura de Radar de Áudio Espacial 3D e resumo do minimapa. |
-| `Control + Shift + R` ou `NVDA + Shift + R` | Alternar radar de proximidade de áudio espacial. |
-| `Control + Shift + P` ou `NVDA + Shift + P` | Assistente de Loja de Itens / Recomendações de Compra. |
-| `Control + Shift + U` ou `NVDA + Shift + U` | Status de recarga e nível de todas as habilidades. |
-| `Control + Shift + K` ou `NVDA + Shift + K` | Placar da partida e KDA pessoal. |
-| `Control + Shift + S` ou `NVDA + Shift + S` | Estatísticas completas do campeão (vida, recursos, atributos). |
-| `Control + Shift + O` ou `NVDA + Shift + O` | Tempo e objetivos da partida. |
-| `Control + Shift + E` ou `NVDA + Shift + E` | Inimigos, rotas deduzidas e feitiços. |
-| `Control + Shift + F8` | Alternar alerta automático de gank. |
-| `Control + Shift + F7` | Alternar leitura automática de pings da partida. |
-| `NVDA + Shift + L` ou `Control + Shift + L` | Status geral dos serviços Riot, League Client e partida ao vivo. |
-| `NVDA + Shift + H` | Lista completa de todos os atalhos disponíveis. |
+| `NVDA + F6` | **Aceitar Partida Encontrada (Ready Check)** de qualquer janela. |
+| `Control + Shift + F6` | Alternar **Aceitação Automática** de partidas. |
+| `NVDA + Shift + L` | **Status Geral**: Situação do Riot Client, League Client, saguão e partida ao vivo. |
+| `NVDA + Shift + S` | **Perfil do Usuário**: Riot ID, nível do invocador e elo ranqueado. |
+| `NVDA + Shift + D` | **Download / Instalação**: Progresso e velocidade de download do LoL. |
+| `NVDA + Shift + J` | **Botão Principal**: Pressionar Jogar, Instalar ou confirmar avisos modais. |
+| `NVDA + Shift + P` | **Assistente de Campeões**: Escolher e travar campeão na Seleção de Campeões. |
+| `NVDA + Shift + B` | **ARAM / Banimento**: Gerenciar banco do ARAM ou banir campeão. |
+| `NVDA + Shift + R` | **Runas Oficiais**: Importar melhores runas e feitiços recomendados. |
+| `NVDA + Shift + O` | **Rotas no Saguão**: Configurar preferências de rotas (*Top, Jg, Mid, Bot, Sup*). |
+| `NVDA + Shift + C` | **Seleção de Campeões**: Detalhes da fase, campeões e tempo restante. |
+| `NVDA + Shift + W` | **Focar Jogo**: Restaurar e focar a janela da partida 3D do League of Legends. |
+| `NVDA + Shift + H` | **Ajuda**: Lista falada de todos os atalhos disponíveis. |
 
 
 ---

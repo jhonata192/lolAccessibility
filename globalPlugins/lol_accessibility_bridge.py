@@ -380,10 +380,12 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             "riotclientux", "riotclientux.exe",
             "riotclientservices", "riotclientservices.exe"
         ]
-        league_exes = [
+        launcher_exes = [
             "leagueclientuxrender", "leagueclientuxrender.exe",
             "leagueclientux", "leagueclientux.exe",
-            "leagueclient", "leagueclient.exe",
+            "leagueclient", "leagueclient.exe"
+        ]
+        game_exes = [
             "league of legends", "league of legends.exe",
             "League of Legends", "League of Legends.exe",
             "leagueoflegends", "leagueoflegends.exe",
@@ -398,11 +400,19 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             except Exception as e:
                 log.debug(f"lolAccessibility: Erro ao mapear {exe}: {e}")
                 
-        for exe in league_exes:
+        for exe in launcher_exes:
             try:
                 appModuleHandler.registerExecutableWithAppModule(exe, "leagueclient")
                 self._registered_executables.append(exe)
                 log.info(f"lolAccessibility: Mapeado '{exe}' -> 'leagueclient'")
+            except Exception as e:
+                log.debug(f"lolAccessibility: Erro ao mapear {exe}: {e}")
+
+        for exe in game_exes:
+            try:
+                appModuleHandler.registerExecutableWithAppModule(exe, "leagueoflegends")
+                self._registered_executables.append(exe)
+                log.info(f"lolAccessibility: Mapeado '{exe}' -> 'leagueoflegends'")
             except Exception as e:
                 log.debug(f"lolAccessibility: Erro ao mapear {exe}: {e}")
 
@@ -486,15 +496,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             except Exception:
                 pass
 
-            if hasattr(self, "_last_riot_focus_time") and (now - self._last_riot_focus_time) < 20.0:
-                if fg:
-                    pid = getattr(fg, "processID", 0)
-                    if pid:
-                        app_name = (appModuleHandler.getAppNameFromProcessID(pid, includeExt=False) or "").lower()
-                        if app_name and not any(k in app_name for k in ["riot", "league", "nvda", "system"]):
-                            self._last_riot_focus_time = 0
-                            return False
-                return True
+            pass
         except Exception:
             pass
         return False
@@ -995,7 +997,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script(
         description="Aceita a partida encontrada no League of Legends de qualquer janela.",
-        gestures=["kb:f6", "kb:NVDA+f6"]
+        gestures=["kb:NVDA+f6"]
     )
     def script_globalAcceptMatch(self, gesture):
         """Aceita o Ready Check imediatamente."""
@@ -1043,7 +1045,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script(
         description="Anuncia o status global do Riot Client e League of Legends.",
-        gestures=["kb:NVDA+shift+l", "kb:control+shift+l"]
+        gestures=["kb:NVDA+shift+l"]
     )
     def script_announceGlobalStatus(self, gesture):
         """Verifica o status atual de todos os componentes da Riot."""
@@ -1101,7 +1103,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script(
         description="Anuncia globalmente o perfil autenticado da Riot Games.",
-        gestures=["kb:NVDA+shift+s", "kb:control+shift+s"]
+        gestures=["kb:NVDA+shift+s"]
     )
     def script_announceGlobalUserInfo(self, gesture):
         """Consulta as informações do perfil autenticado na Riot ou League of Legends."""
@@ -1135,7 +1137,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script(
         description="Anuncia o progresso atual do download ou atualização do League of Legends.",
-        gestures=["kb:NVDA+shift+d", "kb:control+shift+d"]
+        gestures=["kb:NVDA+shift+d"]
     )
     def script_announceGlobalDownload(self, gesture):
         """Varre a tela do cliente e consulta a API para anunciar o download/instalação."""
@@ -1186,7 +1188,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script(
         description="Move o foco ou ativa o botão principal (Jogar, Instalar, Atualizar, Ações e Modais do LoL).",
-        gestures=["kb:NVDA+shift+j", "kb:control+shift+j"]
+        gestures=["kb:NVDA+shift+j"]
     )
     def script_focusActionButton(self, gesture):
         if not self._should_handle_launcher_gesture(gesture):
@@ -1322,7 +1324,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script(
         description="Abre o assistente para escolher e travar campeão com runas e feitiços automáticos.",
-        gestures=["kb:NVDA+shift+p", "kb:control+shift+p"]
+        gestures=["kb:NVDA+shift+p"]
     )
     def script_globalPickChampion(self, gesture):
         if not self._should_handle_launcher_gesture(gesture):
@@ -1368,7 +1370,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script(
         description="Gerencia o banco de reservas no ARAM ou abre o assistente para banir campeão.",
-        gestures=["kb:NVDA+shift+b", "kb:control+shift+b"]
+        gestures=["kb:NVDA+shift+b"]
     )
     def script_globalBanOrBench(self, gesture):
         if not self._should_handle_launcher_gesture(gesture):
@@ -1416,7 +1418,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script(
         description="Importa a melhor página de runas recomendadas e configura os feitiços de invocador.",
-        gestures=["kb:NVDA+shift+r", "kb:control+shift+r"]
+        gestures=["kb:NVDA+shift+r"]
     )
     def script_globalImportRunes(self, gesture):
         if not self._should_handle_launcher_gesture(gesture):
@@ -1437,7 +1439,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script(
         description="Configura acessivelmente suas preferências de rotas no saguão (Top, Jungle, Mid, Bot, Sup).",
-        gestures=["kb:NVDA+shift+o", "kb:control+shift+o"]
+        gestures=["kb:NVDA+shift+o"]
     )
     def script_globalSetLobbyPositions(self, gesture):
         if not self._should_handle_launcher_gesture(gesture):
@@ -1472,7 +1474,7 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
 
     @script(
         description="Anuncia informações detalhadas da Seleção de Campeões.",
-        gestures=["kb:NVDA+shift+c", "kb:control+shift+c"]
+        gestures=["kb:NVDA+shift+c"]
     )
     def script_globalChampSelectInfo(self, gesture):
         if not self._should_handle_launcher_gesture(gesture):
@@ -1541,425 +1543,9 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
         )
         ui.message(help_text)
 
-    # ------------------------------------------------------------------------
-    # ATALHOS IN-GAME (Ativos durante a partida 3D ao vivo)
-    # ------------------------------------------------------------------------
-
-    @script(
-        description="Anuncia Vida atual, Mana e Ouro do jogador local.",
-        gestures=["kb:h", "kb:control+shift+h"]
-    )
-    def script_liveHealth(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        player = get_live_active_player()
-        if not player:
-            ui.message("Dados da partida indisponíveis no momento.")
-            return
-        stats = player.get("championStats", {})
-        cur_hp = int(stats.get("currentHealth", 0))
-        max_hp = int(stats.get("maxHealth", 0))
-        pct = int((cur_hp / max_hp) * 100) if max_hp > 0 else 0
-        res_type = (stats.get("resourceType") or "MANA").capitalize()
-        cur_res = int(stats.get("resourceValue", 0))
-        max_res = int(stats.get("resourceMax", 0))
-        res_pct = int((cur_res / max_res) * 100) if max_res > 0 else 0
-        gold = int(player.get("currentGold", 0))
-        ui.message(f"Vida: {cur_hp} de {max_hp} ({pct}%). {res_type}: {cur_res} de {max_res} ({res_pct}%). Ouro: {gold}.")
-
-    @script(
-        description="Anuncia KDA (Abates, Mortes, Assistências) e Farm de tropas (CS).",
-        gestures=["kb:k", "kb:control+shift+k"]
-    )
-    def script_liveKDA(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        player = get_live_active_player()
-        if not player:
-            ui.message("Placar indisponível no momento.")
-            return
-        scores = player.get("scores") or {}
-        k = scores.get("kills", 0)
-        d = scores.get("deaths", 0)
-        a = scores.get("assists", 0)
-        cs = scores.get("creepScore", 0)
-        ui.message(f"Placar: {k} abates, {d} mortes, {a} assistências. Farm: {cs} tropas.")
-
-    @script(
-        description="Anuncia os itens do inventário do jogador e ouro atual.",
-        gestures=["kb:i", "kb:control+shift+i"]
-    )
-    def script_liveItems(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        player = get_live_active_player()
-        if not player:
-            ui.message("Inventário indisponível no momento.")
-            return
-        items = player.get("items", [])
-        gold = int(player.get("currentGold", 0))
-        item_names = [it.get("displayName", "Item") for it in items if (it.get("count", 0) > 0 or "count" not in it)]
-        if not item_names:
-            ui.message(f"Inventário vazio. Ouro disponível: {gold}.")
-        else:
-            ui.message(f"Itens: {', '.join(item_names)}. Ouro: {gold}.")
-
-    @script(
-        description="Anuncia os níveis e tempos de recarga das habilidades (Q, W, E, R).",
-        gestures=["kb:u", "kb:control+shift+u"]
-    )
-    def script_liveAbilities(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        combat = getattr(self, "combat_status", None)
-        abilities = get_live_active_player_abilities()
-        if combat and abilities:
-            ui.message(combat.get_abilities_summary(abilities))
-            return
-        if not abilities:
-            ui.message("Habilidades indisponíveis.")
-            return
-        parts = []
-        for key in ["Q", "W", "E", "R"]:
-            ab = abilities.get(key, {})
-            name = ab.get("displayName", key)
-            lvl = ab.get("abilityLevel", 0)
-            parts.append(f"{key}: {name} (Nível {lvl})")
-        ui.message(". ".join(parts))
-
-    @script(
-        description="Anuncia quantos campeões inimigos estão vivos ou mortos.",
-        gestures=["kb:o", "kb:control+shift+o"]
-    )
-    def script_liveEnemies(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        player = get_live_active_player()
-        players = get_live_player_list()
-        if not player or not players:
-            ui.message("Lista de jogadores indisponível.")
-            return
-        my_team = player.get("team")
-        alive = []
-        dead = []
-        for p in players:
-            if p.get("team") != my_team:
-                cname = p.get("championName", "Inimigo")
-                if p.get("isDead", False):
-                    dead.append(f"{cname} (renasce em {int(p.get('respawnTimer', 0))}s)")
-                else:
-                    alive.append(cname)
-        msg_parts = []
-        if alive:
-            msg_parts.append(f"Inimigos vivos ({len(alive)}): {', '.join(alive)}")
-        else:
-            msg_parts.append("Todos os inimigos estão mortos!")
-        if dead:
-            msg_parts.append(f"Mortos ({len(dead)}): {', '.join(dead)}")
-        ui.message(". ".join(msg_parts))
-
-    @script(
-        description="Anuncia o tempo decorrido da partida.",
-        gestures=["kb:t", "kb:control+shift+t"]
-    )
-    def script_liveTime(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        stats = get_live_game_stats()
-        if not stats:
-            ui.message("Tempo de partida indisponível.")
-            return
-        gtime = int(stats.get("gameTime", 0))
-        mins, secs = divmod(gtime, 60)
-        mode = stats.get("gameMode") or "LoL"
-        ui.message(f"Tempo de jogo: {mins} minutos e {secs} segundos ({mode}).")
-
-    @script(
-        description="Anuncia as rotas e atribuições dos inimigos deduzidas via heurística (1 toque: rotas, 2 toques: feitiços).",
-        gestures=["kb:control+shift+e", "kb:NVDA+shift+e"]
-    )
-    def script_globalEnemyLanes(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        lane_info = get_live_enemy_lane_assignments()
-        if not lane_info:
-            ui.message("Rotas inimigas indisponíveis no momento.")
-            return
-        count = getLastScriptRepeatCount()
-        if count >= 1:
-            spells_txt = lane_info.get("spells_summary", "")
-            if spells_txt:
-                ui.message(spells_txt)
-            else:
-                ui.message("Feitiços inimigos indisponíveis.")
-        else:
-            txt = lane_info.get("text", "")
-            if txt:
-                ui.message(txt)
-            else:
-                ui.message("Rotas inimigas não identificadas.")
-
-    @script(
-        description="Lê mensagens e pings recentes do chat (1 toque: últimos 3; 2 toques: varredura imediata).",
-        gestures=["kb:control+shift+m", "kb:NVDA+shift+m"]
-    )
-    def script_globalChatAndPings(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        if not getattr(self, "chat_reader", None):
-            ui.message("Leitor de chat indisponível.")
-            return
-        count = getLastScriptRepeatCount()
-        if count >= 1:
-            new_items = self.chat_reader.scan_chat_sync()
-            if new_items:
-                msgs = [it.get("announcement", "") for it in new_items if it.get("announcement")]
-                ui.message(". ".join(msgs))
-            else:
-                summary = self.chat_reader.get_recent_summary(max_count=5)
-                ui.message(f"Varredura concluída. {summary}")
-        else:
-            summary = self.chat_reader.get_recent_summary(max_count=3)
-            ui.message(summary)
-
-    @script(
-        description="Alterna a leitura automática de pings e chat durante a partida.",
-        gestures=["kb:control+shift+f7"]
-    )
-    def script_toggleAutoPings(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        self.auto_pings_enabled = not getattr(self, "auto_pings_enabled", True)
-        state = "ativada" if self.auto_pings_enabled else "desativada"
-        try:
-            tones.beep(784, 100)
-            tones.beep(987, 120)
-        except Exception:
-            pass
-        ui.message(f"Leitura automática de pings e chat {state}.")
-
-    @script(
-        description="Consulta o status tático do minimapa (1 toque: resumo rápido; 2 toques: análise zona por zona).",
-        gestures=["kb:control+shift+n", "kb:NVDA+shift+n"]
-    )
-    def script_globalMinimap(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        scanner = getattr(self, "minimap_scanner", None)
-        if not scanner:
-            ui.message("Scanner de minimapa indisponível.")
-            return
-
-        active = get_live_active_player() or {}
-        players = get_live_player_list() or []
-        my_team = "ORDER"
-        summoner = active.get("summonerName", "")
-        for p in players:
-            if p.get("summonerName") == summoner:
-                my_team = p.get("team", "ORDER")
-                break
-
-        live_data = {"allPlayers": players, "gameData": get_live_game_stats() or {}}
-        count = getLastScriptRepeatCount()
-        if count >= 1:
-            msg = scanner.get_tactical_summary(live_data=live_data, my_team=my_team, detailed=True)
-        else:
-            msg = scanner.get_tactical_summary(live_data=live_data, my_team=my_team, detailed=False)
-        ui.message(msg)
-
-    @script(
-        description="Alterna o alerta automático de emboscadas e presença de inimigos (Alerta de Gank).",
-        gestures=["kb:control+shift+f8"]
-    )
-    def script_toggleGankAlerts(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        self.auto_gank_alerts_enabled = not getattr(self, "auto_gank_alerts_enabled", True)
-        state = "ativado" if self.auto_gank_alerts_enabled else "desativado"
-        try:
-            tones.beep(880, 100)
-            tones.beep(1046, 120)
-        except Exception:
-            pass
-        ui.message(f"Alerta automático de gank {state}.")
-
-    @script(
-        description="Executa globalmente a Varredura do Radar de Áudio Espacial 3D (tecla M).",
-        gestures=["kb:m", "kb:control+shift+m"]
-    )
-    def script_globalRadarSweep(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        scanner = getattr(self, "minimap_scanner", None)
-        if not scanner:
-            ui.message("Scanner de radar indisponível.")
-            return
-
-        active = get_live_active_player() or {}
-        my_team = active.get("team") or "ORDER"
-
-        lane_info = get_live_enemy_lane_assignments()
-        my_lane = "BOTTOM"
-        if lane_info and lane_info.get("my_assigned_lane"):
-            my_lane = lane_info.get("my_assigned_lane")
-
-        scan = scanner.scan_radar(player_lane=my_lane, my_team=my_team)
-        if not scan:
-            ui.message("Não foi possível capturar o radar no momento.")
-            return
-
-        player = getattr(self, "spatial_player", None)
-        if player:
-            player.play_radar_sweep(scan.get("targets", []))
-
-        ui.message(scan.get("text", "Radar executado."))
-
-    @script(
-        description="Alterna o Radar de Proximidade de Áudio Espacial 3D em tempo real.",
-        gestures=["kb:control+shift+r", "kb:NVDA+shift+r"]
-    )
-    def script_toggleAudioRadar(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        self.spatial_radar_enabled = not getattr(self, "spatial_radar_enabled", True)
-        state = "ativado" if self.spatial_radar_enabled else "desativado"
-        player = getattr(self, "spatial_player", None)
-        if player:
-            if self.spatial_radar_enabled:
-                player.play_spatial_tone(880, 80, -0.6, volume=0.6)
-                player.play_spatial_tone(1175, 100, 0.6, volume=0.6)
-            else:
-                player.play_spatial_tone(880, 80, 0.6, volume=0.6)
-                player.play_spatial_tone(440, 100, -0.6, volume=0.6)
-        ui.message(f"Radar de áudio espacial 3D {state}.")
-
-    @script(
-        description="Acessa a Loja de Itens e Recomendações de Compra na Partida (tecla P ou Ctrl+Shift+P).",
-        gestures=["kb:p", "kb:control+shift+p", "kb:NVDA+shift+p"]
-    )
-    def script_globalShopOrPick(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        assistant = getattr(self, "shop_assistant", None)
-        if not assistant:
-            ui.message("Assistente de loja indisponível.")
-            return
-        active = get_live_active_player() or {}
-        cur_gold = active.get("currentGold", 0.0)
-        inv = active.get("items", [])
-        analysis = assistant.analyze_inventory_and_gold(cur_gold, inv)
-        msg = assistant.format_shop_speech(analysis)
-        ui.message(msg)
-
-    @script(
-        description="Inicia o retorno à base (Recall / tecla B) com áudio e monitor de dano/interrupção.",
-        gestures=["kb:b"]
-    )
-    def script_recallKey(self, gesture):
-        if self._should_handle_game_gesture(gesture):
-            active = get_live_active_player() or {}
-            stats = active.get("championStats", {})
-            cur_hp = stats.get("currentHealth", 1000.0)
-            combat = getattr(self, "combat_status", None)
-            if combat:
-                msg = combat.start_recall(cur_hp)
-                ui.message(msg)
-            gesture.send()
-        else:
-            gesture.send()
-
-    @script(
-        description="Move o campeão pelo minimapa para a Rota Superior (Top Lane).",
-        gestures=["kb:alt+1"]
-    )
-    def script_navTop(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        nav = getattr(self, "tactical_navigator", None)
-        if nav:
-            ok, msg = nav.navigate_to("TOP")
-            ui.message(msg)
-        else:
-            ui.message("Navegador indisponível.")
-
-    @script(
-        description="Move o campeão pelo minimapa para a Rota do Meio (Mid Lane).",
-        gestures=["kb:alt+2"]
-    )
-    def script_navMid(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        nav = getattr(self, "tactical_navigator", None)
-        if nav:
-            ok, msg = nav.navigate_to("MID")
-            ui.message(msg)
-        else:
-            ui.message("Navegador indisponível.")
-
-    @script(
-        description="Move o campeão pelo minimapa para a Rota Inferior (Bot Lane).",
-        gestures=["kb:alt+3"]
-    )
-    def script_navBot(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        nav = getattr(self, "tactical_navigator", None)
-        if nav:
-            ok, msg = nav.navigate_to("BOT")
-            ui.message(msg)
-        else:
-            ui.message("Navegador indisponível.")
-
-    @script(
-        description="Move o campeão pelo minimapa de volta para a Base Aliada (Fonte Segura).",
-        gestures=["kb:alt+4"]
-    )
-    def script_navBase(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        nav = getattr(self, "tactical_navigator", None)
-        if nav:
-            ok, msg = nav.navigate_to("BASE")
-            ui.message(msg)
-        else:
-            ui.message("Navegador indisponível.")
-
-    @script(
-        description="Centraliza a câmera e o cursor do mouse no Campeão.",
-        gestures=["kb:alt+space"]
-    )
-    def script_centerChampion(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        nav = getattr(self, "tactical_navigator", None)
-        if nav:
-            ok, msg = nav.center_camera_and_cursor()
-            ui.message(msg)
-        else:
-            ui.message("Navegador indisponível.")
-
     @script(
         description="Foca e restaura em tela cheia a janela da partida do League of Legends.",
-        gestures=["kb:NVDA+shift+w", "kb:alt+f10"]
+        gestures=["kb:NVDA+shift+w"]
     )
     def script_focusGameWindow(self, gesture):
         nav = getattr(self, "tactical_navigator", None)
@@ -2004,65 +1590,5 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             ui.message("Janela da partida do League of Legends focada e restaurada em tela cheia!")
         else:
             ui.message("Janela da partida do League of Legends não encontrada.")
-
-    @script(
-        description="Consulta globalmente o placar da partida: KDA do jogador, tropas (CS) e placar de abates.",
-        gestures=["kb:control+shift+k", "kb:NVDA+shift+k"]
-    )
-    def script_globalScoreboard(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        ui.message(format_scoreboard_summary())
-
-    @script(
-        description="Consulta globalmente as estatísticas do campeão (vida, mana/energia, atributos).",
-        gestures=["kb:control+shift+s", "kb:NVDA+shift+s"]
-    )
-    def script_globalStats(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        ui.message(format_champion_stats_summary())
-
-    @script(
-        description="Consulta globalmente os objetivos e tempo da partida (dragões, barões, torres).",
-        gestures=["kb:control+shift+o", "kb:NVDA+shift+o"]
-    )
-    def script_globalObjectives(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        ui.message(format_objectives_summary())
-
-    @script(
-        description="Consulta globalmente os inimigos da partida, rotas, feitiços e tempo de renascimento.",
-        gestures=["kb:control+shift+e", "kb:NVDA+shift+e"]
-    )
-    def script_globalEnemies(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        ui.message(format_enemies_summary())
-
-    @script(
-        description="Executa o menu ou comando rápido de navegação pelo minimapa.",
-        gestures=["kb:control+shift+n", "kb:NVDA+shift+n"]
-    )
-    def script_globalNavigator(self, gesture):
-        if not self._should_handle_game_gesture(gesture):
-            gesture.send()
-            return
-        nav = getattr(self, "tactical_navigator", None)
-        if not nav:
-            ui.message("Navegador tático indisponível.")
-            return
-        team = nav.get_player_team()
-        ok, msg = nav.navigate_to("MID", team=team)
-        ui.message(msg)
-
-
-
-
 
 

@@ -926,6 +926,46 @@ def test_gesture_focus_filtering():
     print("OK: Filtro de foco e repasse de atalhos validados com sucesso (zero sequestro de teclas).")
 
 
+
+def test_no_keyboard_interference():
+    """Garante que teclas de letras simples NUNCA existam no GlobalPlugin ou LeagueClient."""
+    print("Testando ausência total de interferência na digitação do teclado...")
+    
+    bridge_path = os.path.join(ROOT_DIR, "globalPlugins", "lol_accessibility_bridge.py")
+    with open(bridge_path, "r", encoding="utf-8") as f:
+        bridge_src = f.read()
+
+    # Teclas simples que jamais podem ser capturadas globalmente pelo NVDA
+    forbidden_global = [
+        '"kb:h"', '"kb:k"', '"kb:i"', '"kb:u"', '"kb:o"', '"kb:t"',
+        '"kb:m"', '"kb:p"', '"kb:b"', '"kb:n"', '"kb:f6"',
+        '"kb:alt+1"', '"kb:alt+2"', '"kb:alt+3"', '"kb:alt+4"', '"kb:alt+space"',
+        '"kb:control+shift+t"', '"kb:control+shift+p"'
+    ]
+    for key in forbidden_global:
+        assert key not in bridge_src, f"ERRO CRÍTICO: {key} encontrado no GlobalPlugin! Causa atraso de digitação no Windows."
+
+    # LeagueClient não pode ter teclas de letras soltas (o usuário digita no chat do cliente e busca campeões)
+    lc_path = os.path.join(ROOT_DIR, "appModules", "leagueclient.py")
+    with open(lc_path, "r", encoding="utf-8") as f:
+        lc_src = f.read()
+
+    forbidden_lc = ['"kb:h"', '"kb:k"', '"kb:i"', '"kb:u"', '"kb:o"', '"kb:t"', '"kb:m"', '"kb:p"', '"kb:b"', '"kb:n"']
+    for key in forbidden_lc:
+        assert key not in lc_src, f"ERRO CRÍTICO: {key} encontrado no LeagueClient! Interfere na busca/chat do launcher."
+
+    # LeagueOfLegends DEVE conter os atalhos in-game da partida 3D
+    lol_path = os.path.join(ROOT_DIR, "appModules", "leagueoflegends.py")
+    with open(lol_path, "r", encoding="utf-8") as f:
+        lol_src = f.read()
+
+    required_in_game = ['"kb:h"', '"kb:k"', '"kb:i"', '"kb:u"', '"kb:o"', '"kb:t"', '"kb:m"', '"kb:p"', '"kb:b"']
+    for key in required_in_game:
+        assert key in lol_src, f"ERRO: Atalho in-game {key} ausente no módulo da partida 3D!"
+
+    print("OK: Proteção contra atraso de teclado e isolamento de módulos 100% validados.")
+
+
 if __name__ == "__main__":
     test_syntax()
     test_manifest()
@@ -944,6 +984,7 @@ if __name__ == "__main__":
     test_tactical_navigator()
     test_tactical_hud_summaries()
     test_gesture_focus_filtering()
+    test_no_keyboard_interference()
     print("\nTodos os testes unitários passaram com 100% de sucesso!")
 
 

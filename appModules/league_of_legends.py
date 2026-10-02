@@ -1,2 +1,2 @@
-﻿# -*- coding: utf-8 -*-
-from .leagueclient import AppModule
+# -*- coding: utf-8 -*-
+from .leagueoflegends import AppModule
