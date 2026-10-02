@@ -1,0 +1,26 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Temporary and local logs
+*.log
+*.tmp
+temp/
+scratch/
+
+# Build artifacts (binaries are published via GitHub Releases)
+*.nvda-addon
+
+# Editor and IDE configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
