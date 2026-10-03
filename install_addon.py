@@ -27,6 +27,7 @@ INCLUDED_ITEMS = [
     "globalPlugins",
     "lol_lib",
     "lib",
+    "scripts",
     "doc",
     "locale"
 ]

@@ -318,6 +318,18 @@ except Exception:
         except Exception:
             shared_cleaner = None
 
+try:
+    from lol_lib.tos_helper import LoLToSHelper, scroll_and_accept_async
+except Exception:
+    try:
+        from tos_helper import LoLToSHelper, scroll_and_accept_async
+    except Exception:
+        try:
+            from lib.tos_helper import LoLToSHelper, scroll_and_accept_async
+        except Exception:
+            LoLToSHelper = None
+            scroll_and_accept_async = lambda *a, **kw: None
+
 
 class GlobalPlugin(globalPluginHandler.GlobalPlugin):
     """Plugin global de acessibilidade para League of Legends e Riot Client."""
@@ -1196,6 +1208,32 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             return
         lcu_lock = get_league_client_lockfile()
 
+        # 0. Verificar se há diálogo de Termos de Serviço ou botão 'Role para aceitar'
+        try:
+            fg = api.getForegroundObject()
+            if fg:
+                has_tos = False
+                def check_tos_node(o, depth=0):
+                    nonlocal has_tos
+                    if has_tos or depth > 8:
+                        return
+                    t = f"{o.name or ''} {getattr(o, 'value', '') or ''}".lower()
+                    if any(k in t for k in ["role para aceitar", "termos de serviço", "termos de servico", "contrato do usuário", "acordo de licença"]):
+                        has_tos = True
+                        return
+                    for c in getattr(o, "children", []):
+                        check_tos_node(c, depth + 1)
+                check_tos_node(fg)
+                if has_tos:
+                    ui.message("Diálogo de Termos de Serviço detectado! Rolando e aceitando...")
+                    if scroll_and_accept_async:
+                        def _cb(ok, msg):
+                            ui.message(msg)
+                        scroll_and_accept_async(callback=_cb)
+                        return
+        except Exception as e:
+            log.debug(f"lolAccessibility: Erro ao verificar termos na tela: {e}")
+
         # 1. Tentar primeiro localizar e clicar em botões modais ou de confirmação na tela (TÔ DENTRO, ENTENDI, etc.)
         try:
             candidates = []
@@ -1321,6 +1359,22 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     return
 
         ui.message("Nenhum botão de ação principal localizado na tela atual.")
+
+    @script(
+        description="Rola o container de Termos de Serviço (ToS) e clica em Aceitar no Riot Client ou League of Legends.",
+        gestures=["kb:NVDA+shift+t"]
+    )
+    def script_globalAcceptTerms(self, gesture):
+        if not self._should_handle_launcher_gesture(gesture):
+            gesture.send()
+            return
+        ui.message("Iniciando rolagem e aceitação dos Termos de Serviço...")
+        if scroll_and_accept_async:
+            def _cb(ok, msg):
+                ui.message(msg)
+            scroll_and_accept_async(callback=_cb)
+        else:
+            ui.message("Assistente de termos não disponível.")
 
     @script(
         description="Abre o assistente para escolher e travar campeão com runas e feitiços automáticos.",
@@ -1527,6 +1581,8 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
             "Atalhos lolAccessibility: "
             "F6: Aceitar partida encontrada no LoL. "
             "Control+Shift+F6: Alternar aceitação automática de partida. "
+            "Control+Shift+T ou NVDA+Shift+T: Rolar e aceitar Termos de Serviço (ToS) automaticamente. "
+            "Control+Shift+J ou NVDA+Shift+J: Pressionar botão principal (Jogar, Modais, Termos, Saguão). "
             "Control+Shift+P ou NVDA+Shift+P: Escolher e travar campeão (com runas automáticas). "
             "Control+Shift+B ou NVDA+Shift+B: Banco do ARAM ou banir campeão. "
             "Control+Shift+D ou NVDA+Shift+D: Rolar dado no ARAM ou progresso de download. "

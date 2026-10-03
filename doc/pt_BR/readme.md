@@ -14,6 +14,7 @@ O **lolAccessibility** é um add-on completo para o leitor de telas **NVDA** que
 - **Fim dos alertas do Chromium**: Neutraliza os avisos de *"Para ver descrições ausentes de imagens..."*.
 - **Rotulação Acessível**: Identifica botões de Perfil, Amigos, Configurações, Notificações, Minimizar e Fechar.
 - **Progresso de Download**: Atalho dedicado para ler velocidade, tamanho baixado e tempo restante.
+- **Automação de Termos de Serviço (ToS) (`Control + Shift + T` ou `NVDA + Shift + T`)**: Rola automaticamente o container web CEF/Chromium e clica em Aceitar, contornando a barreira onde o botão permanece desabilitado ("Role para aceitar") e o teclado é ignorado. Também disponível via arquivo de 1 clique `aceitar_termos_lol.bat`.
 
 ### 2. Saguão e Seleção de Campeões (League Client)
 - **Assistente de Seleção e Travamento de Campeões (`Control + Shift + P`)**:
@@ -70,9 +71,10 @@ O **lolAccessibility** é um add-on completo para o leitor de telas **NVDA** que
 ### No Riot Client (Janela do inicializador)
 | Atalho | Ação |
 | :--- | :--- |
+| `Control + Shift + T` ou `NVDA + Shift + T` | **Rolar e Aceitar Termos de Serviço (ToS)** automaticamente. |
 | `Control + Shift + D` ou `NVDA + Shift + D` | Anunciar velocidade e progresso do download/instalação. |
 | `Control + Shift + S` ou `NVDA + Shift + S` | Anunciar usuário autenticado (Riot ID#tag) e status Online. |
-| `Control + Shift + J` ou `NVDA + Shift + J` | Mover o foco para o botão principal de ação (Jogar/Instalar). |
+| `Control + Shift + J` ou `NVDA + Shift + J` | Mover o foco para o botão principal de ação (Jogar/Instalar) ou aceitar termos. |
 | `NVDA + Shift + H` | Ajuda rápida dos atalhos do add-on. |
 
 ### No League Client (Pré-jogo / Saguão / Seleção de Campeões)
@@ -80,13 +82,14 @@ O **lolAccessibility** é um add-on completo para o leitor de telas **NVDA** que
 | :--- | :--- |
 | `F6` ou `NVDA + F6` | **Aceitar partida encontrada (Ready Check)** instantaneamente. |
 | `Control + Shift + F6` | Ativar / Desativar a **Aceitação Automática** de partidas. |
+| `Control + Shift + T` ou `NVDA + Shift + T` | **Rolar e Aceitar Termos de Serviço (ToS)** automaticamente. |
 | `Control + Shift + P` ou `NVDA + Shift + P` | **Escolher e Travar Campeão** (com runas e feitiços automáticos). |
 | `Control + Shift + B` ou `NVDA + Shift + B` | **Banco do ARAM** (trocar campeão) ou **Banir Campeão**. |
 | `Control + Shift + D` ou `NVDA + Shift + D` | **Rolar Dado no ARAM** (ou ver download no Launcher). |
 | `Control + Shift + R` ou `NVDA + Shift + R` | **Importar Runas e Feitiços** recomendados oficiais da Riot. |
 | `Control + Shift + O` ou `NVDA + Shift + O` | **Escolher Rotas no Saguão** (Top, Jungle, Mid, Bot, Sup). |
 | `Control + Shift + C` ou `NVDA + Shift + C` | **Detalhes da Seleção de Campeões** (fase, time, campeão e timer). |
-| `Control + Shift + J` ou `NVDA + Shift + J` | Iniciar busca de partida ou confirmar avisos pendentes. |
+| `Control + Shift + J` ou `NVDA + Shift + J` | Iniciar busca de partida, aceitar termos ou interagir com tutoriais. |
 | `Control + Shift + S` ou `NVDA + Shift + S` | Perfil do invocador (nível, XP e ranqueada). |
 | `Control + Shift + Escape` | Fechar e confirmar diálogos/termos modais pendentes. |
 

@@ -54,6 +54,18 @@ except Exception:
             shared_cleaner = None
 
 try:
+    from lol_lib.tos_helper import LoLToSHelper, scroll_and_accept_async
+except Exception:
+    try:
+        from tos_helper import LoLToSHelper, scroll_and_accept_async
+    except Exception:
+        try:
+            from lib.tos_helper import LoLToSHelper, scroll_and_accept_async
+        except Exception:
+            LoLToSHelper = None
+            scroll_and_accept_async = lambda *a, **kw: None
+
+try:
     from NVDAObjects.IAccessible.chromium import ChromeVBuf, ChromeVBufTextInfo, Document as ChromiumDocument
 except Exception:
     try:
@@ -593,14 +605,50 @@ class AppModule(appModuleHandler.AppModule):
             ui.message("Usuário conectado no Riot Client. Status: Online.")
 
     @script(
-        description="Move o foco para o botão principal de ação (Jogar, Instalar ou Atualizar).",
+        description="Rola o container de Termos de Serviço (ToS) e clica em Aceitar no Riot Client.",
+        gestures=["kb:NVDA+shift+t", "kb:control+shift+t"]
+    )
+    def script_acceptTerms(self, gesture):
+        """Rola fisicamente o container de termos e clica em Aceitar."""
+        ui.message("Iniciando rolagem e aceitação dos Termos de Serviço...")
+        if scroll_and_accept_async:
+            def _cb(ok, msg):
+                ui.message(msg)
+            scroll_and_accept_async(callback=_cb)
+        else:
+            ui.message("Assistente de termos não disponível.")
+
+    @script(
+        description="Move o foco para o botão principal de ação (Jogar, Instalar ou Atualizar) ou aceita Termos de Serviço pendentes.",
         gestures=["kb:NVDA+shift+j", "kb:control+shift+j"]
     )
     def script_focusActionButton(self, gesture):
-        """Localiza o botão primário de ação do Riot Client."""
+        """Localiza o botão primário de ação do Riot Client ou aceita termos pendentes."""
         try:
             fg = api.getForegroundObject()
             if fg:
+                # 1. Verificar se estamos diante de um diálogo de Termos de Serviço
+                has_tos_dialog = False
+                def check_tos(o, depth=0):
+                    nonlocal has_tos_dialog
+                    if has_tos_dialog or depth > 8:
+                        return
+                    t = f"{o.name or ''} {getattr(o, 'value', '') or ''}".lower()
+                    if any(k in t for k in ["role para aceitar", "termos de serviço", "termos de servico", "contrato do usuário", "acordo de licença"]):
+                        has_tos_dialog = True
+                        return
+                    for c in o.children:
+                        check_tos(c, depth + 1)
+                check_tos(fg)
+
+                if has_tos_dialog:
+                    ui.message("Diálogo de Termos de Serviço detectado! Rolando e aceitando...")
+                    if scroll_and_accept_async:
+                        def _cb(ok, msg):
+                            ui.message(msg)
+                        scroll_and_accept_async(callback=_cb)
+                        return
+
                 target = None
                 def find_btn(o, depth=0):
                     nonlocal target
@@ -608,7 +656,7 @@ class AppModule(appModuleHandler.AppModule):
                         return
                     name = (o.name or "").lower()
                     if o.role == ROLE_BUTTON:
-                        if any(k in name for k in ["jogar", "instalar", "atualizar", "play", "install", "update", "começar", "comecar", "iniciar"]):
+                        if any(k in name for k in ["jogar", "instalar", "atualizar", "play", "install", "update", "começar", "comecar", "iniciar", "aceitar"]):
                             target = o
                             return
                     for c in o.children:
@@ -635,6 +683,7 @@ class AppModule(appModuleHandler.AppModule):
     def script_help(self, gesture):
         help_text = (
             "Atalhos de Acessibilidade Riot & LoL: "
+            "Control+Shift+T: Rolar e aceitar Termos de Serviço (ToS) automaticamente. "
             "Control+Shift+D: Anunciar progresso do download. "
             "Control+Shift+S: Anunciar usuário e status. "
             "Control+Shift+J: Ir para o botão Jogar ou Instalar. "
@@ -643,4 +692,5 @@ class AppModule(appModuleHandler.AppModule):
             "Control+Shift+C: Informações da seleção de campeões."
         )
         ui.message(help_text)
+
 

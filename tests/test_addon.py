@@ -966,6 +966,56 @@ def test_no_keyboard_interference():
     print("OK: Proteção contra atraso de teclado e isolamento de módulos 100% validados.")
 
 
+def test_tos_helper():
+    """Valida o módulo de acessibilidade para Termos de Serviço (ToS)."""
+    print("Testando assistente de Termos de Serviço (tos_helper)...")
+    from lol_lib.tos_helper import (
+        LoLToSHelper,
+        ensure_interactive_desktop,
+        find_target_window,
+        scroll_and_accept_sync,
+        scroll_and_accept_async
+    )
+
+    # 1. Valida associação à Área de Trabalho Interativa
+    desk = ensure_interactive_desktop()
+    print(f"  Desktop interativo vinculado: {desk is not None}")
+
+    # 2. Valida busca de janelas sem crash
+    target = find_target_window()
+    print(f"  Janela alvo detectada: {target is not None}")
+
+    # 3. Valida execução segura quando janela não está aberta
+    ok, msg = scroll_and_accept_sync(scroll_steps=1, click_button=False)
+    assert isinstance(ok, bool)
+    assert isinstance(msg, str)
+    assert len(msg) > 0
+
+    # 4. Valida existência dos scripts autônomos e skills
+    ps_path = os.path.join(ROOT_DIR, "scripts", "aceitar_termos_lol.ps1")
+    bat_path = os.path.join(ROOT_DIR, "scripts", "aceitar_termos_lol.bat")
+    root_bat = os.path.join(ROOT_DIR, "aceitar_termos_lol.bat")
+    skill_path = os.path.join(ROOT_DIR, ".agents", "skills", "riot-tos-accessibility", "SKILL.md")
+
+    assert os.path.exists(ps_path), "scripts/aceitar_termos_lol.ps1 não encontrado!"
+    assert os.path.exists(bat_path), "scripts/aceitar_termos_lol.bat não encontrado!"
+    assert os.path.exists(root_bat), "aceitar_termos_lol.bat raiz não encontrado!"
+    assert os.path.exists(skill_path), "Skill riot-tos-accessibility não encontrada!"
+
+    # 5. Valida atalhos de ToS nos módulos
+    for mod_path in [
+        os.path.join(ROOT_DIR, "appModules", "riotclient.py"),
+        os.path.join(ROOT_DIR, "appModules", "leagueclient.py"),
+        os.path.join(ROOT_DIR, "globalPlugins", "lol_accessibility_bridge.py")
+    ]:
+        with open(mod_path, "r", encoding="utf-8") as f:
+            src = f.read()
+        assert "script_acceptTerms" in src or "script_globalAcceptTerms" in src, f"Atalho de ToS ausente em {mod_path}!"
+        assert "tos_helper" in src, f"Import tos_helper ausente em {mod_path}!"
+
+    print("OK: Assistente de Termos de Serviço (ToS) 100% validado.")
+
+
 if __name__ == "__main__":
     test_syntax()
     test_manifest()
@@ -985,6 +1035,7 @@ if __name__ == "__main__":
     test_tactical_hud_summaries()
     test_gesture_focus_filtering()
     test_no_keyboard_interference()
+    test_tos_helper()
     print("\nTodos os testes unitários passaram com 100% de sucesso!")
 
 

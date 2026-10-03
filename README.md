@@ -75,10 +75,16 @@ Ele integra as três camadas oficiais de interface e dados disponibilizados pela
 - **Suporte ao Modo ARAM (`Control + Shift + B` e `Control + Shift + D`)**: Troca no banco de reservas e rolagem de dados.
 - **Rotas no Saguão (`Control + Shift + O`)**: Configuração facilitada de preferências de rotas (*Top, Jungle, Mid, Bot, Sup*).
 
-### 8. Isolamento Estrito de Foco e Proteção de Digitação (Zero Key Hijacking)
+### 8. Assistente de Termos de Serviço (ToS) e Contratos Riot (`NVDA + Shift + T` ou `Control + Shift + T`)
+- **Superação da Barreira Chromium/CEF**: O Riot Client e o League Client exibem termos de serviço com caixas de mais de 40.000 pixels que não respondem a comandos de teclado (`Page Down`, `End`, Setas), mantendo o botão "Aceitar" desabilitado ("Role para aceitar").
+- **Automação Completa via Mouse Wheel Físico**: Vincula a thread à Área de Trabalho Interativa (`OpenDesktop Default`), focaliza o container web, dispara múltiplos eventos físicos de `mouse_event(WHEEL)` e aciona o botão de aceitar via UI Automation com fallback por coordenadas.
+- **Execução com 1 Clique (`aceitar_termos_lol.bat`)**: Fornece arquivo executável `.bat` e script PowerShell para execução instantânea fora do NVDA se desejado.
+- **Feedback Acústico**: Bipes em frequências distintas informam o início (800Hz) e o sucesso (1200Hz + 1600Hz) da operação.
+
+### 9. Isolamento Estrito de Foco e Proteção de Digitação (Zero Key Hijacking)
 - **Digitação 100% Nativa e Veloz em Todo o Windows**: O plugin global (`GlobalPlugin`) utiliza estritamente combinações com o modificador NVDA (`NVDA + Shift + ...` e `NVDA + F6`), sem jamais registrar teclas de letras simples soltas (`a-z`) no sistema.
 - **Teclas de Letras Simples Isoladas na Partida 3D**: Os atalhos `H` (Vida), `K` (KDA), `I` (Itens), `U` (Habilidades), `O` (Inimigos), `T` (Tempo), `M` (Radar), `P` (Loja), `B` (Recall) e `Alt + 1..4` pertencem exclusivamente ao módulo `appModules/leagueoflegends.py` e são desativados no exato instante em que você alterna para outro aplicativo.
-- **Zero Conflito com Navegadores e Editores**: Atalhos como `Control + Shift + T` (reabrir abas fechadas no Chrome/Firefox), `Control + Shift + P` (Paleta de Comandos no VS Code), `Control + Shift + N` (janela anônima) e `Alt + Espaço` funcionam com zero atraso e zero interferência em todo o sistema operacional.
+- **Zero Conflito com Navegadores e Editores**: Atalhos como `Control + Shift + P` (Paleta de Comandos no VS Code), `Control + Shift + N` (janela anônima) e `Alt + Espaço` funcionam com zero atraso e zero interferência em todo o sistema operacional.
 
 ---
 
@@ -118,7 +124,8 @@ Ele integra as três camadas oficiais de interface e dados disponibilizados pela
 | `Control + Shift + R` ou `NVDA + Shift + R` | **Importar Runas e Feitiços Recomendados**. |
 | `Control + Shift + O` ou `NVDA + Shift + O` | **Escolher Rotas no Saguão** (Top, Jungle, Mid, Bot, Sup). |
 | `Control + Shift + C` ou `NVDA + Shift + C` | **Detalhes da Seleção de Campeões** (fase, time, campeão e tempo restante). |
-| `Control + Shift + J` ou `NVDA + Shift + J` | Iniciar busca de partida ou clicar em botões principais de ação. |
+| `Control + Shift + T` ou `NVDA + Shift + T` | **Rolar e Aceitar Termos de Serviço (ToS)** automaticamente. |
+| `Control + Shift + J` ou `NVDA + Shift + J` | Iniciar busca de partida, interagir com tutoriais ou clicar em botões principais de ação. |
 | `NVDA + Shift + L` ou `Control + Shift + L` | Status geral dos serviços Riot, League Client e partida ao vivo. |
 | `NVDA + Shift + H` | Ajuda rápida de atalhos. |
 

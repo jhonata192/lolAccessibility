@@ -258,6 +258,18 @@ except Exception:
         except Exception:
             get_tactical_navigator = lambda: None
 
+try:
+    from lol_lib.tos_helper import LoLToSHelper, scroll_and_accept_async
+except Exception:
+    try:
+        from tos_helper import LoLToSHelper, scroll_and_accept_async
+    except Exception:
+        try:
+            from lib.tos_helper import LoLToSHelper, scroll_and_accept_async
+        except Exception:
+            LoLToSHelper = None
+            scroll_and_accept_async = lambda *a, **kw: None
+
 
 
 
@@ -1162,6 +1174,20 @@ class AppModule(appModuleHandler.AppModule):
         ui.message(msg)
 
     @script(
+        description="Rola o container de Termos de Serviço (ToS) e clica em Aceitar no League of Legends.",
+        gestures=["kb:NVDA+shift+t", "kb:control+shift+t"]
+    )
+    def script_acceptTerms(self, gesture):
+        """Rola fisicamente o container de termos e clica em Aceitar."""
+        ui.message("Iniciando rolagem e aceitação dos Termos de Serviço...")
+        if scroll_and_accept_async:
+            def _cb(ok, msg):
+                ui.message(msg)
+            scroll_and_accept_async(callback=_cb)
+        else:
+            ui.message("Assistente de termos não disponível.")
+
+    @script(
         description="Executa a ação principal no cliente (dispensa modais, aceita termos, inicia busca ou foca botão de jogar).",
         gestures=["kb:NVDA+shift+j", "kb:control+shift+j"]
     )
@@ -1173,7 +1199,34 @@ class AppModule(appModuleHandler.AppModule):
             ui.message(f"Termos e avisos modais ({dismissed}) confirmados com sucesso!")
             return
 
-        # 2. Se estiver em Matchmaking, cancela a busca
+        # 2. Se houver diálogo de Termos de Serviço físico na UI (CEF/Chromium), aciona rolagem e aceite
+        try:
+            fg = api.getForegroundObject()
+            if fg:
+                has_tos_dialog = False
+                def check_tos(o, depth=0):
+                    nonlocal has_tos_dialog
+                    if has_tos_dialog or depth > 8:
+                        return
+                    t = f"{o.name or ''} {getattr(o, 'value', '') or ''}".lower()
+                    if any(k in t for k in ["role para aceitar", "termos de serviço", "termos de servico", "contrato do usuário", "acordo de licença"]):
+                        has_tos_dialog = True
+                        return
+                    for c in getattr(o, "children", []):
+                        check_tos(c, depth + 1)
+                check_tos(fg)
+
+                if has_tos_dialog:
+                    ui.message("Diálogo de Termos de Serviço detectado! Rolando e aceitando...")
+                    if scroll_and_accept_async:
+                        def _cb(ok, msg):
+                            ui.message(msg)
+                        scroll_and_accept_async(callback=_cb)
+                        return
+        except Exception as e:
+            log.debug(f"lolAccessibility: Erro ao verificar diálogo de termos: {e}")
+
+        # 3. Se estiver em Matchmaking, cancela a busca
         phase = get_lcu_gameflow_phase()
         if phase == "Matchmaking":
             ok = cancel_lcu_matchmaking()
@@ -1182,7 +1235,7 @@ class AppModule(appModuleHandler.AppModule):
                 ui.message("Busca de partida cancelada.")
                 return
 
-        # 3. Se estiver em Saguão (Lobby), inicia a busca de partida se for o líder
+        # 4. Se estiver em Saguão (Lobby), inicia a busca de partida se for o líder
         if phase == "Lobby":
             lobby = get_lcu_lobby_info()
             if lobby and lobby.get("is_leader"):
@@ -1207,7 +1260,7 @@ class AppModule(appModuleHandler.AppModule):
                         ui.message("Não foi possível iniciar a busca. Verifique se há restrições ou termos pendentes.")
                         return
 
-        # 4. Vasculha a árvore de acessibilidade da tela atual por botões chave
+        # 5. Vasculha a árvore de acessibilidade da tela atual por botões chave
         target = None
         try:
             fg = api.getForegroundObject()
@@ -1244,7 +1297,7 @@ class AppModule(appModuleHandler.AppModule):
         except Exception as e:
             log.debug(f"lolAccessibility: Erro em focusActionButton: {e}")
 
-        # 5. Se estiver no Hub (phase None) e nenhum botão foi focado, abre saguão padrão (Swiftplay Iniciante / ARAM / Tutoriais)
+        # 6. Se estiver no Hub (phase None) e nenhum botão foi focado, abre saguão padrão (Swiftplay Iniciante / ARAM / Tutoriais)
         if phase is None:
             for q_id in [880, 450, 2000, 2010, 2020]:
                 ok = create_lcu_lobby(q_id)
@@ -1263,9 +1316,18 @@ class AppModule(appModuleHandler.AppModule):
         count = dismiss_lcu_notifications()
         if count > 0:
             tones.beep(880, 120)
-            ui.message(f"{count} diálogo(s) ou aviso(s) dispensados.")
+            ui.message(f"{count} diálogo(s) ou aviso(s) dispensados via API.")
         else:
-            ui.message("Nenhum aviso ou diálogo pendente.")
+            if scroll_and_accept_async:
+                ui.message("Verificando se há Termos de Serviço ou diálogos na tela...")
+                def _cb(ok, msg):
+                    if ok:
+                        ui.message(msg)
+                    else:
+                        ui.message("Nenhum aviso ou diálogo pendente.")
+                scroll_and_accept_async(callback=_cb)
+            else:
+                ui.message("Nenhum aviso ou diálogo pendente.")
 
     @script(
         description="Abre ou consulta o saguão de partida rápida (Iniciante / ARAM / Tutorial).",
@@ -1301,6 +1363,7 @@ class AppModule(appModuleHandler.AppModule):
             "Atalhos do League Client: "
             "F6: Aceitar partida encontrada (Ready Check). "
             "Control+Shift+F6: Alternar aceitacão automática de partida. "
+            "Control+Shift+T ou NVDA+Shift+T: Rolar e aceitar Termos de Serviço (ToS) automaticamente. "
             "Control+Shift+P ou NVDA+Shift+P: Escolher e travar campeão. "
             "Control+Shift+B ou NVDA+Shift+B: Banco do ARAM ou banir campeão. "
             "Control+Shift+R ou NVDA+Shift+R: Importar runas e feitiços recomendados. "

@@ -11,7 +11,17 @@ import shutil
 
 ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
 ADDON_NAME = "lolAccessibility"
-VERSION = "1.0.0"
+
+def get_version():
+    manifest_path = os.path.join(ROOT_DIR, "manifest.ini")
+    if os.path.exists(manifest_path):
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            for line in f:
+                if line.strip().startswith("version"):
+                    return line.split("=", 1)[1].strip()
+    return "1.1.0"
+
+VERSION = get_version()
 OUTPUT_FILENAME = f"{ADDON_NAME}-{VERSION}.nvda-addon"
 OUTPUT_PATH = os.path.join(ROOT_DIR, OUTPUT_FILENAME)
 
@@ -21,6 +31,7 @@ INCLUDED_ITEMS = [
     "globalPlugins",
     "lol_lib",
     "lib",
+    "scripts",
     "doc",
     "locale"
 ]
