@@ -1542,6 +1542,131 @@ def test_library_cards_and_settings_controls():
     print("OK: Cards da biblioteca, configurações, alternadores, convites e pedidos validados com 100% de sucesso.")
 
 
+def test_league_client_npe_and_navigation():
+    """Valida as classes de acessibilidade do League of Legends para NPE, Tutorial, Bate-papo e Navegação."""
+    print("Testando acessibilidade do League Client (NPE, Tutorial, Badges e Navegação)...")
+    import types
+    for mod in ["tones", "virtualBuffers", "virtualBuffers.WebKit"]:
+        if mod not in sys.modules:
+            sys.modules[mod] = types.ModuleType(mod)
+    sys.modules["tones"].beep = lambda *a: None
+    if not hasattr(sys.modules["scriptHandler"], "getLastScriptRepeatCount"):
+        sys.modules["scriptHandler"].getLastScriptRepeatCount = lambda: 0
+
+    from appModules.leagueclient import (
+        LeagueTutorialCard,
+        LeagueSummonerBadge,
+        LeagueChatInput,
+        LeagueSmartButton,
+        extract_all_inner_text,
+    )
+
+    # 1. Testar LeagueTutorialCard Disponível
+    class MockTutCard(LeagueTutorialCard):
+        def __init__(self, children, cls_str):
+            self.children = children
+            self.location = None
+            self._cls = cls_str
+        @property
+        def name(self):
+            return ""
+        @property
+        def IA2Attributes(self):
+            return {"class": self._cls, "tag": "div"}
+
+    c1 = types.SimpleNamespace(name="1", children=[], IA2Attributes={})
+    c2 = types.SimpleNamespace(name="BEM-VINDO(A) AO LEAGUE OF LEGENDS", children=[], IA2Attributes={})
+    c3 = types.SimpleNamespace(name="Experimente outros Campeões e destrua as torres inimigas.", children=[], IA2Attributes={})
+    c4 = types.SimpleNamespace(name="150 de EXP", children=[], IA2Attributes={})
+    card_obj = MockTutCard([c1, c2, c3, c4], "npe-tutorial-carousel-item npe-tutorial-item-card-component card ember-view")
+    name = card_obj._get_name()
+    assert "Tutorial 1: BEM-VINDO(A) AO LEAGUE OF LEGENDS" in name
+    assert "Disponível" in name
+    assert "150 de EXP" in name
+    assert "Experimente outros Campeões" in name
+
+    # 2. Testar LeagueTutorialCard Bloqueado
+    l1 = types.SimpleNamespace(name="2", children=[], IA2Attributes={})
+    l2 = types.SimpleNamespace(name="FORTALECIMENTO", children=[], IA2Attributes={})
+    l3 = types.SimpleNamespace(name="Aumente o nível do seu Campeão e cause mais dano.", children=[], IA2Attributes={})
+    l4 = types.SimpleNamespace(name="150 de EXP", children=[], IA2Attributes={})
+    l5 = types.SimpleNamespace(name="Conclua a partida de tutorial anterior para habilitar", children=[], IA2Attributes={})
+    locked_obj = MockTutCard([l1, l2, l3, l4, l5], "npe-tutorial-carousel-item npe-tutorial-item-card-component card locked ember-view")
+    lname = locked_obj._get_name()
+    assert "Tutorial 2: FORTALECIMENTO" in lname
+    assert "Bloqueado" in lname
+    assert "Conclua a partida de tutorial anterior" in lname
+
+    # 3. Testar LeagueTutorialCard Recompensa
+    r1 = types.SimpleNamespace(name="Conclua todas as partidas de tutorial para habilitar sua Cápsula de Recompensa", children=[], IA2Attributes={})
+    reward_obj = MockTutCard([r1], "npe-tutorial-carousel-item npe-tutorial-item-reward-component reward locked ember-view")
+    rname = reward_obj._get_name()
+    assert "Recompensa do Tutorial: Cápsula de Iniciante" in rname
+    assert "Bloqueada" in rname
+
+    # 4. Testar LeagueSummonerBadge
+    class MockBadge(LeagueSummonerBadge):
+        def __init__(self, children):
+            self.children = children
+            self.location = None
+        @property
+        def name(self):
+            return ""
+        @property
+        def IA2Attributes(self):
+            return {"class": "summoner-info-anchor", "tag": "div"}
+
+    b_level = types.SimpleNamespace(name="1", children=[], IA2Attributes={})
+    b_name = types.SimpleNamespace(name="jhonata", children=[], IA2Attributes={})
+    badge_obj = MockBadge([b_level, b_name])
+    bname = badge_obj._get_name()
+    assert "Perfil do Invocador" in bname
+    assert "jhonata" in bname
+    assert "Nível 1" in bname
+
+    # 5. Testar LeagueChatInput
+    chat_obj = LeagueChatInput()
+    assert "Bate-papo do LoL" in chat_obj._get_name()
+
+    # 6. Testar LeagueSmartButton (setas NPE, fechar, moedas, controles da janela)
+    class MockLBtn(LeagueSmartButton):
+        def __init__(self, cls_str, tag="button", name="Botão"):
+            self._cls = cls_str
+            self._tag = tag
+            self._name = name
+            self.children = []
+            self.location = None
+        @property
+        def name(self):
+            return self._name
+        @property
+        def IA2Attributes(self):
+            return {"class": self._cls, "tag": self._tag}
+
+    btn_left = MockLBtn("npe-tutorial-carousel-arrow npe-tutorial-carousel-left-arrow")
+    assert btn_left._get_name() == "Tutorial anterior"
+
+    btn_right = MockLBtn("npe-tutorial-carousel-arrow npe-tutorial-carousel-right-arrow")
+    assert btn_right._get_name() == "Próximo tutorial"
+
+    btn_close = MockLBtn("", tag="lol-uikit-close-button", name="")
+    assert btn_close._get_name() == "Fechar"
+
+    btn_min = MockLBtn("app-controls-minimize")
+    assert btn_min._get_name() == "Minimizar League of Legends"
+
+    btn_settings = MockLBtn("app-controls-settings")
+    assert btn_settings._get_name() == "Configurações do League of Legends"
+
+    btn_be = MockLBtn("currency-be")
+    assert btn_be._get_name() == "Essência Azul"
+
+    btn_rp = MockLBtn("currency-rp")
+    assert btn_rp._get_name() == "Riot Points (RP)"
+
+    print("OK: Acessibilidade do League Client (NPE, Tutorial, Badges e Navegação) 100% validada.")
+
+
 if __name__ == "__main__":
     test_syntax()
     test_manifest()
@@ -1566,6 +1691,7 @@ if __name__ == "__main__":
     test_riot_client_rea_enhancements()
     test_upper_menus_and_social_tabs()
     test_library_cards_and_settings_controls()
+    test_league_client_npe_and_navigation()
     print("\nTodos os testes unitários passaram com 100% de sucesso!")
 
 

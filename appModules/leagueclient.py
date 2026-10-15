@@ -10,6 +10,8 @@ Opera tanto no cliente pré-jogo (LCU) quanto durante a partida 3D ao vivo (Live
 
 import os
 import sys
+import re
+import time
 import appModuleHandler
 import controlTypes
 import ui
@@ -887,19 +889,285 @@ class LeagueDecorativeAnimation(NVDAObjects.NVDAObject):
         return False
 
 
+def extract_all_inner_text(obj, max_depth=8):
+    """Extrai recursivamente todos os fragmentos de texto válidos dentro de uma hierarquia IAccessible."""
+    texts = []
+    visited = set()
+
+    def _walk(o, d=0):
+        if d > max_depth or not o:
+            return
+        oid = id(o)
+        if oid in visited:
+            return
+        visited.add(oid)
+
+        if d > 0:
+            try:
+                raw_name = ""
+                ia_obj = getattr(o, "IAccessibleObject", None)
+                if ia_obj and hasattr(ia_obj, "accName"):
+                    try:
+                        raw_name = ia_obj.accName(getattr(o, "IAccessibleChildID", 0)) or ""
+                    except Exception:
+                        pass
+                if not raw_name:
+                    raw_name = getattr(o, "_name", "") or getattr(o, "name", "") or ""
+
+                clean = "".join(ch for ch in raw_name if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+                clean_lower = clean.lower()
+                if clean and clean_lower not in (
+                    "animation", "lottie", "item", "link", "botão", "button",
+                    "seção", "section", "div", "span", "card"
+                ) and "unable to play media" not in clean_lower:
+                    if clean not in texts:
+                        texts.append(clean)
+            except Exception:
+                pass
+
+        sub_list = []
+        if hasattr(o, "IAccessibleObject"):
+            try:
+                import NVDAObjects.IAccessible
+                sub_list = NVDAObjects.IAccessible.IAccessible._get_children(o)
+            except Exception:
+                pass
+        if not sub_list:
+            try:
+                sub_list = getattr(o, "_mock_children", None) or getattr(o, "_children", None) or o.__dict__.get("children", []) or []
+            except Exception:
+                sub_list = []
+        if not sub_list and d > 0:
+            try:
+                sub_list = getattr(o, "children", []) or []
+            except Exception:
+                sub_list = []
+
+        for ch in sub_list:
+            _walk(ch, d + 1)
+
+    _walk(obj, 0)
+    return texts
+
+
 class LeagueCustomComponent(NVDAObjects.NVDAObject):
     """Normaliza componentes personalizados lol-uikit para o leitor de telas."""
     def _get_name(self):
-        raw_name = super().name or ""
+        try:
+            raw_name = super().name or ""
+        except Exception:
+            raw_name = getattr(self, "_name", "") or getattr(self, "name", "") or ""
         if raw_name.startswith("lol-uikit-"):
             return "Elemento de interface"
         return raw_name
 
 
+class LeagueTutorialCard(NVDAObjects.NVDAObject):
+    """Cartão acessível para etapas e recompensas do Tutorial / NPE do League of Legends."""
+
+    def _get_role(self):
+        return getattr(controlTypes.Role, "BUTTON", 9)
+
+    def _get_name(self):
+        auto_id, class_name, tag = get_element_identifiers(self)
+        texts = extract_all_inner_text(self, max_depth=8)
+
+        is_locked = "locked" in class_name
+        is_reward = "reward" in class_name or "npe-tutorial-item-reward-component" in class_name
+
+        # Query authoritative LCU NPE status if available
+        npe_info = None
+        try:
+            if callable(get_lcu_npe_status):
+                npe_status = get_lcu_npe_status()
+                if npe_status and isinstance(npe_status, dict) and npe_status.get("tutorials"):
+                    npe_info = npe_status["tutorials"]
+        except Exception:
+            pass
+
+        # Sequence number (1, 2, 3)
+        seq = ""
+        for t in texts:
+            if t.isdigit():
+                seq = t
+                break
+        if not seq and npe_info:
+            if "item-0" in class_name or "index-0" in class_name:
+                seq = "1"
+            elif "item-1" in class_name or "index-1" in class_name:
+                seq = "2"
+            elif "item-2" in class_name or "index-2" in class_name:
+                seq = "3"
+
+        if is_reward:
+            status = "Bloqueada" if is_locked else "Disponível para resgate"
+            rew_desc = ""
+            hint = ""
+            for t in texts:
+                if "conclua" in t.lower():
+                    hint = f" ({t})"
+                    break
+            if npe_info:
+                for tut in npe_info:
+                    if tut.get("type") == "REWARD":
+                        if tut.get("rewards"):
+                            rew_desc = f" - {tut['rewards'][0]}"
+                        if tut.get("status") == "UNLOCKED":
+                            status = "Disponível para resgate"
+                        elif tut.get("status") == "COMPLETED":
+                            status = "Resgatada"
+            return f"Recompensa do Tutorial: Cápsula de Iniciante (Status: {status}){rew_desc}{hint}"
+
+        # Title
+        title = ""
+        for t in texts:
+            if t not in ("RECOMPENSAS", seq) and (t.isupper() or "LEAGUE" in t or "BEM-VINDO" in t):
+                if "exp" not in t.lower() and not t.lower().startswith("conclua") and len(t) > 2:
+                    title = t
+                    break
+        if not title and len(texts) > 1 and len(texts[1]) > 2:
+            title = texts[1]
+
+        # Reward
+        rew = ""
+        for t in texts:
+            tl = t.lower()
+            if re.search(r'\b(exp|ea|essência|cápsula)\b', tl) and t != title:
+                rew = t
+                break
+
+        # Description
+        desc = ""
+        for t in texts:
+            tl = t.lower()
+            if len(t) > 15 and t != title and not re.search(r'\b(exp|ea|essência)\b', tl) and not tl.startswith("conclua") and "unable" not in tl:
+                desc = t
+                break
+
+        # If DOM text missed title or desc, fill from LCU NPE
+        if npe_info and seq and seq.isdigit():
+            step_idx = int(seq)
+            for tut in npe_info:
+                if tut.get("stepNumber") == step_idx and tut.get("type") != "REWARD":
+                    if not title or len(title) <= 2:
+                        title = tut.get("title") or tut.get("name") or ""
+                    if not desc:
+                        desc = tut.get("description") or ""
+                    if not rew and tut.get("rewards"):
+                        rew = tut["rewards"][0]
+                    if tut.get("status") == "LOCKED":
+                        is_locked = True
+                    elif tut.get("status") in ("UNLOCKED", "IN_PROGRESS"):
+                        is_locked = False
+                    break
+
+        # Lock hint
+        if is_locked:
+            lock_hint = ""
+            for t in texts:
+                if t.lower().startswith("conclua"):
+                    lock_hint = f" - {t}"
+                    break
+            if not lock_hint and npe_info:
+                lock_hint = " - Conclua a partida de tutorial anterior"
+            status = f"Bloqueado{lock_hint}"
+        else:
+            status = "Disponível - Pressione Enter para iniciar"
+
+        parts = []
+        if seq:
+            parts.append(f"Tutorial {seq}: {title or 'Etapa do Tutorial'}")
+        else:
+            parts.append(title or "Tutorial do LoL")
+
+        parts.append(f"(Status: {status})")
+        if rew:
+            parts.append(f"Recompensa: {rew}")
+        if desc:
+            parts.append(f"Descrição: {desc}")
+
+        return ". ".join(parts)
+
+    def _get_firstChild(self):
+        return None
+
+    def _get_children(self):
+        return []
+
+    def _get_childCount(self):
+        return 0
+
+
+class LeagueSummonerBadge(NVDAObjects.NVDAObject):
+    """Emblema de Invocador com nome e nível do jogador."""
+
+    def _get_role(self):
+        return getattr(controlTypes.Role, "BUTTON", 9)
+
+    def _get_name(self):
+        # 1. Authoritative LCU summoner info
+        try:
+            if callable(get_lcu_summoner_info):
+                info = get_lcu_summoner_info()
+                if info and isinstance(info, dict) and info.get("name"):
+                    name = info.get("name", "")
+                    tag = info.get("tag", "")
+                    level = info.get("level", 1)
+                    xp_curr = info.get("xp_current", 0)
+                    xp_need = info.get("xp_needed", 0)
+                    tag_str = f"#{tag}" if tag else ""
+                    xp_str = f" - {xp_curr}/{xp_curr + xp_need} EXP" if (xp_curr or xp_need) else ""
+                    return f"Perfil do Invocador: {name}{tag_str} (Nível {level}{xp_str})"
+        except Exception:
+            pass
+
+        # 2. Fallback to DOM inner text
+        texts = extract_all_inner_text(self, max_depth=6)
+        name = ""
+        level = ""
+        for t in texts:
+            clean = t.strip()
+            if "perfil do invocador" in clean.lower():
+                clean = re.sub(r'(?i)perfil do invocador:\s*', '', clean).strip()
+            if clean.isdigit() and not level:
+                level = clean
+            elif not name and not clean.isdigit() and len(clean) > 1 and clean.lower() not in ("div", "span", "img", "icon"):
+                name = clean
+
+        parts = ["Perfil do Invocador"]
+        if name:
+            parts.append(name)
+        if level:
+            parts.append(f"Nível {level}")
+        return ": ".join(parts[:2]) + (f" ({parts[2]})" if len(parts) > 2 else "")
+
+    def _get_firstChild(self):
+        return None
+
+    def _get_children(self):
+        return []
+
+    def _get_childCount(self):
+        return 0
+
+
+class LeagueChatInput(NVDAObjects.NVDAObject):
+    """Campo de texto de bate-papo do League of Legends."""
+
+    def _get_role(self):
+        return getattr(controlTypes.Role, "EDITABLETEXT", 8)
+
+    def _get_name(self):
+        return "Bate-papo do LoL: Digite sua mensagem (Pressione Enter para enviar)"
+
+
 class LeagueSmartTab(NVDAObjects.NVDAObject):
     """Nomeia guias e abas do cliente do League of Legends."""
     def _get_name(self):
-        raw_name = (super().name or "").strip()
+        try:
+            raw_name = (super().name or "").strip()
+        except Exception:
+            raw_name = getattr(self, "_name", "") or getattr(self, "name", "") or ""
         if raw_name and raw_name.lower() not in ("animation", "lottie", "tab", "guia", "button", "botão") and not raw_name.isdigit():
             return raw_name
         auto_id, class_name, tag = get_element_identifiers(self)
@@ -907,8 +1175,9 @@ class LeagueSmartTab(NVDAObjects.NVDAObject):
             if k in auto_id or k in class_name:
                 return v
         try:
-            for child in super().children:
-                c_name = (child.name or "").strip()
+            children = getattr(super(), "children", None) or getattr(self, "children", [])
+            for child in children:
+                c_name = (getattr(child, "name", "") or "").strip()
                 if c_name and c_name.lower() not in ("animation", "lottie", "graphic", "imagem"):
                     return c_name
         except Exception:
@@ -928,27 +1197,67 @@ class LeagueSmartTab(NVDAObjects.NVDAObject):
 class LeagueSmartButton(NVDAObjects.NVDAObject):
     """Nomeia botões sem rótulo do cliente do League of Legends."""
     def _get_name(self):
-        raw_name = (super().name or "").strip()
-        if raw_name and raw_name.lower() not in ("animation", "lottie", "button", "botão", "graphic", "imagem"):
-            return raw_name
+        try:
+            raw_name = (super().name or "").strip()
+        except Exception:
+            raw_name = getattr(self, "_name", "") or getattr(self, "name", "") or ""
         auto_id, class_name, tag = get_element_identifiers(self)
-        target = f"{auto_id} {class_name}"
+        target = f"{auto_id} {class_name} {tag}"
+
+        # 1. NPE / Tutorial specific buttons
+        if "npe-tutorial-carousel-left-arrow" in class_name:
+            return "Tutorial anterior"
+        elif "npe-tutorial-carousel-right-arrow" in class_name:
+            return "Próximo tutorial"
+        elif tag == "lol-uikit-close-button" or "hide-close-button" in class_name:
+            return "Fechar"
+        elif "cta-button" in class_name or "npe-footer" in class_name:
+            return "Iniciar Tutorial"
+
+        # 2. Window & app controls
+        if "app-controls-minimize" in target or "min-button" in target:
+            return "Minimizar League of Legends"
+        elif "app-controls-close" in target or "close-button" in target:
+            return "Fechar League of Legends"
+        elif "app-controls-settings" in target or "settings-button" in target or "gear" in target:
+            return "Configurações do League of Legends"
+        elif "app-controls-bug" in target or "bug-button" in target:
+            return "Reportar erro ou bug"
+        elif "notifications" in target or "bell" in target:
+            return "Notificações do LoL"
+        elif "social-toggle" in target or "friends" in target:
+            return "Amigos e Bate-papo do LoL"
+
+        # 3. Currency / Wallet
+        if "currency-rp" in target or "wallet-rp" in target:
+            return "Riot Points (RP)"
+        elif "currency-be" in target or "wallet-be" in target or "currency-ip" in target:
+            return "Essência Azul"
+
+        # 4. Standard LCU actions
         if "play" in target:
             return "Jogar"
-        elif "close" in target:
-            return "Fechar janela"
-        elif "min" in target:
-            return "Minimizar janela"
-        elif "settings" in target or "gear" in target:
-            return "Configurações do LoL"
-        elif "notifications" in target or "bell" in target:
-            return "Notificações"
-        elif "friends" in target or "chat" in target:
-            return "Amigos e Bate-papo"
+        elif "ready-check" in target or "party-ready" in target:
+            return "Aceitar partida encontrada"
+        elif "find-match" in target or "matchmaking" in target:
+            return "Encontrar partida"
+        elif "cancel-match" in target:
+            return "Cancelar busca de partida"
+        elif "lock-in" in target:
+            return "Confirmar campeão"
+        elif "ban" in target:
+            return "Confirmar banimento"
+        elif "reroll" in target:
+            return "Sortear outro campeão (Reroll)"
+
+        if raw_name and raw_name.lower() not in ("animation", "lottie", "button", "botão", "graphic", "imagem"):
+            return raw_name
+
         try:
-            for child in super().children:
-                c_name = (child.name or "").strip()
-                if c_name and c_name.lower() not in ("animation", "lottie", "graphic", "imagem"):
+            children = getattr(super(), "children", None) or getattr(self, "children", [])
+            for child in children:
+                c_name = (getattr(child, "name", "") or "").strip()
+                if c_name and c_name.lower() not in ("animation", "lottie", "graphic", "imagem", "botão", "button"):
                     return c_name
         except Exception:
             pass
@@ -958,13 +1267,19 @@ class LeagueSmartButton(NVDAObjects.NVDAObject):
         raw = self.name
         if raw and raw.lower() not in ("botão", "button"):
             return None
-        return super().firstChild
+        try:
+            return super().firstChild
+        except Exception:
+            return getattr(self, "_firstChild", None)
 
     def _get_children(self):
         raw = self.name
         if raw and raw.lower() not in ("botão", "button"):
             return []
-        return super().children
+        try:
+            return super().children
+        except Exception:
+            return getattr(self, "_children", [])
 
 
 class AppModule(appModuleHandler.AppModule):
@@ -990,9 +1305,15 @@ class AppModule(appModuleHandler.AppModule):
 
             if role in (ROLE_DOCUMENT, ROLE_PANE) and (tag in ("#document", "document") or "chrome_renderwidgethosthwnd" in window_class):
                 clsList.insert(0, LeagueDocument)
+            elif "npe-tutorial-item-card-component" in class_name or "npe-tutorial-item-reward-component" in class_name or "npe-tutorial-carousel-item" in class_name:
+                clsList.insert(0, LeagueTutorialCard)
+            elif "summoner-info-anchor" in class_name or "fancy-icon-with-level" in class_name or "summoner-level-icon" in class_name:
+                clsList.insert(0, LeagueSummonerBadge)
+            elif "chat-input" in class_name or tag == "lol-social-chat-input":
+                clsList.insert(0, LeagueChatInput)
             elif role == ROLE_TAB or "tab" in class_name or "tab" in auto_id:
                 clsList.insert(0, LeagueSmartTab)
-            elif role == ROLE_BUTTON or "button" in class_name:
+            elif role == ROLE_BUTTON or "button" in class_name or tag == "lol-uikit-close-button" or "arrow" in class_name:
                 clsList.insert(0, LeagueSmartButton)
             elif role == ROLE_ANIMATION or "animation" in class_name:
                 clsList.insert(0, LeagueDecorativeAnimation)

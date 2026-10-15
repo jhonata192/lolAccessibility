@@ -188,9 +188,12 @@ def get_league_client_lockfile():
     return None
 
 
-def request_api(lockfile_info, endpoint, method="GET", body=None, timeout=1.5):
+def request_api(lockfile_info, endpoint=None, method="GET", body=None, timeout=1.5):
     """Executa uma requisição HTTP autenticada contra a API local (LCU ou Riot Client)."""
-    if not lockfile_info:
+    if isinstance(lockfile_info, str):
+        endpoint = lockfile_info
+        lockfile_info = get_league_client_lockfile()
+    if not lockfile_info or not endpoint:
         return None
     
     port = lockfile_info["port"]
@@ -1804,16 +1807,23 @@ def get_lcu_npe_status():
     tutorials = []
     for t in data:
         t_id = t.get("id") or t.get("stepNumber")
-        name = t.get("name") or f"Tutorial {t_id}"
+        title = t.get("title") or t.get("name") or f"Tutorial {t_id}"
         status = t.get("status") or "LOCKED"
         desc = t.get("description") or ""
+        t_type = t.get("type") or "CARD"
+        step = t.get("stepNumber", 1)
+        rewards = [r.get("description") for r in t.get("rewards", []) if isinstance(r, dict) and r.get("description")]
         is_completed = (status == "COMPLETED")
         tutorials.append({
             "id": t_id,
-            "name": name,
+            "title": title,
+            "name": title,
             "status": status,
             "completed": is_completed,
-            "description": desc
+            "description": desc,
+            "type": t_type,
+            "stepNumber": step,
+            "rewards": rewards
         })
 
     completed_count = sum(1 for x in tutorials if x["completed"])
