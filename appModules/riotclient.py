@@ -981,10 +981,26 @@ class RiotSocialItem(NVDAObjects.NVDAObject):
     Identifica itens de amigos e presença no Painel Social do Riot Client,
     anunciando o nome do amigo e o status de presença (Online, Em partida, Ausente, etc.).
     """
+    def _is_my_profile(self):
+        try:
+            for c in (getattr(self, "children", []) or []):
+                _, c_cls, _ = get_element_identifiers(c)
+                if "social-item-avatar" in c_cls:
+                    for sub in (getattr(c, "children", []) or []):
+                        if "identity-menu-disclosure" in get_element_identifiers(sub)[1]:
+                            return True
+        except Exception:
+            pass
+        return False
+
     def _get_role(self):
+        if self._is_my_profile():
+            return getattr(controlTypes.Role, "BUTTON", 9)
         return getattr(controlTypes.Role, "LISTITEM", 15)
 
     def _get_roleText(self):
+        if self._is_my_profile():
+            return "meu perfil"
         return "amigo"
 
     def _get_name(self):
@@ -1023,12 +1039,40 @@ class RiotSocialItem(NVDAObjects.NVDAObject):
 
         if heading:
             status_part = f" (Status: {caption})" if caption else ""
+            if self._is_my_profile():
+                return f"Meu Perfil: {heading}{status_part} - Pressione Enter para abrir Menu da Conta"
             return f"{heading}{status_part}"
 
         if raw_name and raw_name.lower() not in ("item", "social-item", "seção", "section"):
+            if self._is_my_profile():
+                return f"Meu Perfil: {raw_name} - Pressione Enter para abrir Menu da Conta"
             return raw_name
 
+        if self._is_my_profile():
+            return "Meu Perfil - Pressione Enter para abrir Menu da Conta"
         return "Amigo da lista social"
+
+    def _get_firstChild(self):
+        if self._is_my_profile():
+            return None
+        return super().firstChild
+
+    def _get_children(self):
+        if self._is_my_profile():
+            return []
+        return super().children
+
+    def doAction(self, index=0):
+        if self._is_my_profile():
+            try:
+                for c in (getattr(self, "children", []) or []):
+                    if "social-item-avatar" in get_element_identifiers(c)[1]:
+                        for sub in (getattr(c, "children", []) or []):
+                            if "identity-menu-disclosure" in get_element_identifiers(sub)[1]:
+                                return sub.doAction(index)
+            except Exception:
+                pass
+        return super().doAction(index)
 
 
 def clean_game_card_name(raw_name):
