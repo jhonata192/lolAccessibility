@@ -1110,13 +1110,18 @@ def test_riot_client_rea_enhancements():
     assert '"settings-drawer-navigation": "Configurações"' in src
     assert '"campaign-hub": "Campanha e Passes"' in src
 
-    # Testids de botões reconhecidos em RiotSmartButton
+    # Testids e classes de botões reconhecidos em RiotSmartButton
     assert '"tos-accept"' in src
     assert '"tos-checkbox"' in src
     assert '"side-panel-riot-id"' in src
     assert '"side-panel-collapse-button"' in src
     assert '"cta-button-resting-state-button"' in src
     assert '"quick-action-button"' in src
+    assert '"quick-action-disclosure"' in src
+    assert '"basic-nav-button"' in src
+    assert '"campaign-button"' in src
+    assert "SIDEBAR_GAMES" in src
+    assert "isinstance(reg, dict)" in src
 
     # Scripts de atalho presentes
     assert "script_announceFriends" in src
@@ -1125,7 +1130,8 @@ def test_riot_client_rea_enhancements():
     assert "launch_riot_game" in src
     assert "event_gainFocus" in src
 
-    print("OK: Melhorias do Riot Client derivadas de engenharia reversa (REA) 100% validadas.")
+    print("OK: Melhorias do Riot Client derivadas de engenharia reversa (REA) e testes ao vivo com NVDA MCP Bridge 100% validadas.")
+
 
 
 if __name__ == "__main__":

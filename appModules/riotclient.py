@@ -209,6 +209,14 @@ SOCIAL_TAB_INDEX_NAMES = ["Amigos", "Conversas", "Pedidos de amizade"]
 LOGIN_TAB_INDEX_NAMES = ["Entrar com Riot ID", "Entrar com QR Code"]
 SYSTEM_TAB_INDEX_NAMES = ["Windows", "macOS"]
 GAME_HUB_TAB_INDEX_NAMES = ["Visão Geral", "Notas de Atualização", "Notícias", "Eventos"]
+SIDEBAR_GAMES = [
+    "League of Legends",
+    "Teamfight Tactics",
+    "VALORANT",
+    "Legends of Runeterra",
+    "2XKO",
+]
+
 
 
 # ============================================================================
@@ -256,11 +264,13 @@ class RiotChromeVBuf(ChromeVBuf):
 class RiotDocument(NVDAObjects.NVDAObject):
     """
     Documento do Riot Client.
-    Configura o RiotChromeVBuf para que a navegação por linhas (setas para cima/baixo),
-    leitura e cópia para a área de transferência sejam limpas de ruídos do Chromium.
+    Desativa o buffer virtual (Browse Mode) instável, permitindo navegação limpa e direta
+    por foco (Tab / Setas), garantindo que o NVDA pronuncie os nomes semânticos calculados
+    para cada botão, link e controle da interface Electron.
     """
     def _get_treeInterceptorClass(self):
-        return RiotChromeVBuf
+        return None
+
 
 
 class RiotDecorativeAnimation(NVDAObjects.NVDAObject):
@@ -395,6 +405,8 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
     """
     def _get_name(self):
         raw_name = (super().name or "").strip()
+        auto_id, class_name, tag = get_element_identifiers(self)
+        search_target = f"{auto_id} {class_name}"
         
         # Tratar botões de vídeo promocional (Video Off / Video On)
         if raw_name.lower() == "video off":
@@ -402,18 +414,86 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
         elif raw_name.lower() == "video on":
             return "Vídeo promocional (Reproduzindo - pressione Enter para pausar)"
 
+        # 0. Botões de jogos na barra lateral (quick-action-disclosure)
+        if "quick-action-disclosure" in class_name or "quick-action-disclosure" in auto_id:
+            game_name = "Jogo"
+            try:
+                parent = self.parent
+                if parent:
+                    game_btns = [
+                        c for c in (parent.children or [])
+                        if "quick-action-disclosure" in get_element_identifiers(c)[1]
+                    ]
+                    idx = -1
+                    for i, b in enumerate(game_btns):
+                        if b is self or (getattr(b, "location", None) and getattr(b, "location", None) == getattr(self, "location", None)):
+                            idx = i
+                            break
+                    if 0 <= idx < len(SIDEBAR_GAMES):
+                        game_name = SIDEBAR_GAMES[idx]
+            except Exception:
+                pass
+            badge_str = f" ({raw_name} notificações)" if raw_name.isdigit() and int(raw_name) > 0 else ""
+            return f"{game_name} (Menu rápido){badge_str}"
+
+        # 0.1 Botão de ação rápida (Jogar / Instalar o jogo ativo)
+        if "quick-action-button" in class_name or "quick-action-button" in auto_id:
+            action_text = raw_name if raw_name and raw_name.lower() not in ("button", "botão") else "Jogar"
+            game_name = ""
+            try:
+                content_parent = self.parent
+                if content_parent:
+                    nav = content_parent.parent
+                    if nav:
+                        nav_children = list(nav.children or [])
+                        if content_parent in nav_children:
+                            c_idx = nav_children.index(content_parent)
+                            for prev_c in reversed(nav_children[:c_idx]):
+                                if "quick-action-disclosure" in get_element_identifiers(prev_c)[1]:
+                                    game_btns = [
+                                        c for c in nav_children
+                                        if "quick-action-disclosure" in get_element_identifiers(c)[1]
+                                    ]
+                                    if prev_c in game_btns:
+                                        g_idx = game_btns.index(prev_c)
+                                        if 0 <= g_idx < len(SIDEBAR_GAMES):
+                                            game_name = SIDEBAR_GAMES[g_idx]
+                                    break
+            except Exception:
+                pass
+            if game_name:
+                return f"{action_text} {game_name}"
+            return f"{action_text} jogo selecionado"
+
+        # 0.2 Botão de navegação inicial / meus jogos (basic-nav-button)
+        if "basic-nav-button" in class_name:
+            p = self.parent
+            for _ in range(3):
+                if not p:
+                    break
+                p_desc = (getattr(p, "description", "") or "").strip()
+                if p_desc:
+                    if p_desc.lower() in ("início", "inicio", "home"):
+                        return "Página Inicial"
+                    elif p_desc.lower() in ("jogos", "games", "meus jogos"):
+                        return "Meus Jogos"
+                    return p_desc
+                p = getattr(p, "parent", None)
+            return "Página Inicial"
+
+        # 0.3 Botão de novidades e campanhas
+        if "campaign-button" in class_name:
+            return "Novidades e Destaques"
+
         # Tratar números soltos de carrossel de notícias (ex: '0', '1', '13')
-        if raw_name.isdigit():
+        if raw_name.isdigit() and "quick-action" not in class_name and "disclosure" not in class_name:
             return f"Slide {raw_name}"
 
         # Se já tiver um nome legítimo e não for genérico
         if raw_name and raw_name.lower() not in ("animation", "lottie", "button", "botão", "graphic", "imagem"):
             return raw_name
 
-        auto_id, class_name, tag = get_element_identifiers(self)
-        search_target = f"{auto_id} {class_name}"
-
-        # 0. Termos de Serviço (ToS / EULA descobertos via REA)
+        # 0.4 Termos de Serviço (ToS / EULA descobertos via REA)
         if "tos-accept" in search_target:
             return "Aceitar Termos de Serviço"
         elif "tos-checkbox" in search_target:
@@ -499,12 +579,18 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
         return raw_name or "Botão"
 
     def _get_firstChild(self):
+        auto_id, class_name, _ = get_element_identifiers(self)
+        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse")):
+            return None
         raw = self.name
         if raw and raw.lower() not in ("botão", "button"):
             return None
         return super().firstChild
 
     def _get_children(self):
+        auto_id, class_name, _ = get_element_identifiers(self)
+        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse")):
+            return []
         raw = self.name
         if raw and raw.lower() not in ("botão", "button"):
             return []
@@ -517,7 +603,27 @@ class RiotSmartLink(NVDAObjects.NVDAObject):
     """
     def _get_name(self):
         raw_name = (super().name or "").strip()
-        
+        auto_id, class_name, tag = get_element_identifiers(self)
+
+        # Tratar links de novidades e destaques (evitando leitura de imagem sem etiqueta)
+        if "campaign-button" in class_name or "novidades" in (raw_name or "").lower():
+            return "Novidades e Destaques"
+
+        if "basic-nav-button" in class_name:
+            p = self.parent
+            for _ in range(3):
+                if not p:
+                    break
+                p_desc = (getattr(p, "description", "") or "").strip()
+                if p_desc:
+                    if p_desc.lower() in ("início", "inicio", "home"):
+                        return "Página Inicial"
+                    elif p_desc.lower() in ("jogos", "games", "meus jogos"):
+                        return "Meus Jogos"
+                    return p_desc
+                p = getattr(p, "parent", None)
+            return "Página Inicial"
+
         # Limpar prefixos estranhos ou "animation"
         if raw_name and raw_name.lower() not in ("animation", "lottie", "link"):
             return raw_name
@@ -529,7 +635,7 @@ class RiotSmartLink(NVDAObjects.NVDAObject):
                 if depth > 4 or len(found_texts) > 2:
                     return
                 t = (o.name or "").strip()
-                if t and t.lower() not in ("animation", "lottie", "graphic", "link"):
+                if t and t.lower() not in ("animation", "lottie", "graphic", "imagem", "link"):
                     if t not in found_texts:
                         found_texts.append(t)
                 for c in o.children:
@@ -550,6 +656,18 @@ class RiotSmartLink(NVDAObjects.NVDAObject):
                 
         return raw_name or "Link de novidade"
 
+    def _get_firstChild(self):
+        auto_id, class_name, _ = get_element_identifiers(self)
+        if "campaign-button" in class_name or "basic-nav-button" in class_name:
+            return None
+        return super().firstChild
+
+    def _get_children(self):
+        auto_id, class_name, _ = get_element_identifiers(self)
+        if "campaign-button" in class_name or "basic-nav-button" in class_name:
+            return []
+        return super().children
+
 
 # ============================================================================
 # MÓDULO PRINCIPAL DO RIOT CLIENT
@@ -567,28 +685,29 @@ class AppModule(appModuleHandler.AppModule):
             role = getattr(obj, "role", None)
             auto_id, class_name, tag = get_element_identifiers(obj)
             window_class = (getattr(obj, "windowClassName", "") or "").lower()
+            raw_name = (getattr(obj, "name", "") or "").strip().lower()
 
             # Desativa o buffer virtual (Browse Mode) no Riot Client
             if role in (ROLE_DOCUMENT, ROLE_PANE) and (tag in ("#document", "document") or "chrome_renderwidgethosthwnd" in window_class):
                 clsList.insert(0, RiotDocument)
 
+            # Silencia elementos de animação pura ou decorativos mesmo que venham com role botão no Chromium
+            elif role == ROLE_ANIMATION or "animation" in class_name or tag == "svg" or raw_name in ("animation", "lottie"):
+                clsList.insert(0, RiotDecorativeAnimation)
+
             # 1. Tratar Guias (Tabs)
             elif role == ROLE_TAB or "tab-button" in class_name or "tab" in auto_id or tag == "tab":
                 clsList.insert(0, RiotSmartTab)
 
-            # 2. Tratar Botões
-            elif role == ROLE_BUTTON or "button" in class_name or tag == "button":
+            # 2. Tratar Botões (incluindo disclosures de ação rápida e navegação)
+            elif role == ROLE_BUTTON or "button" in class_name or tag == "button" or "disclosure" in class_name:
                 clsList.insert(0, RiotSmartButton)
 
             # 3. Tratar Links
             elif role == ROLE_LINK or "link" in class_name or tag == "a":
                 clsList.insert(0, RiotSmartLink)
 
-            # 4. Tratar elementos do tipo ANIMATION
-            elif role == ROLE_ANIMATION or "animation" in class_name or tag == "svg":
-                clsList.insert(0, RiotDecorativeAnimation)
-
-            # 5. Tratar imagens e gráficos sem texto alternativo
+            # 4. Tratar imagens e gráficos sem texto alternativo
             elif role == ROLE_GRAPHIC or tag == "img":
                 clsList.insert(0, RiotAccessibleGraphic)
 
@@ -682,7 +801,13 @@ class AppModule(appModuleHandler.AppModule):
         """Consulta as informações do perfil autenticado na Riot."""
         info = get_riot_user_info()
         if info:
-            regiao = f" (Região {info['region'].upper()})" if info.get("region") else ""
+            reg = info.get("region")
+            reg_str = ""
+            if isinstance(reg, dict):
+                reg_str = reg.get("id") or reg.get("tag") or ""
+            elif isinstance(reg, str):
+                reg_str = reg
+            regiao = f" (Região {reg_str.upper()})" if reg_str else ""
             ui.message(f"Conectado como: {info['full_tag']}, Status: Online{regiao}")
         else:
             ui.message("Usuário conectado no Riot Client. Status: Online.")
