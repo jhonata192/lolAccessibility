@@ -118,8 +118,37 @@ ROLE_POPUPMENU = getattr(_Role, "POPUPMENU", getattr(controlTypes, "ROLE_POPUPME
 ROLE_MENUITEM = getattr(_Role, "MENUITEM", getattr(controlTypes, "ROLE_MENUITEM", 11))
 ROLE_EDITABLETEXT = getattr(_Role, "EDITABLETEXT", getattr(controlTypes, "ROLE_EDITABLETEXT", 8))
 ROLE_LISTITEM = getattr(_Role, "LISTITEM", getattr(controlTypes, "ROLE_LISTITEM", 15))
+ROLE_CHECKBOX = getattr(_Role, "CHECKBOX", getattr(controlTypes, "ROLE_CHECKBOX", 10))
+ROLE_RADIOBUTTON = getattr(_Role, "RADIOBUTTON", getattr(controlTypes, "ROLE_RADIOBUTTON", 11))
+ROLE_COMBOBOX = getattr(_Role, "COMBOBOX", getattr(controlTypes, "ROLE_COMBOBOX", 12))
+ROLE_TOGGLEBUTTON = getattr(_Role, "TOGGLEBUTTON", getattr(controlTypes, "ROLE_TOGGLEBUTTON", 103))
 
 
+def extract_all_inner_text(obj, max_depth=3):
+    """Extrai recursivamente todos os fragmentos de texto válidos dentro de uma hierarquia IAccessible."""
+    texts = []
+    def _walk(o, d=0):
+        if d > max_depth or not o:
+            return
+        name = getattr(o, "name", "") or ""
+        clean = "".join(ch for ch in name if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+        if clean and clean.lower() not in (
+            "animation", "lottie", "item", "link", "botão", "button",
+            "opção de configuração", "seção", "section", "div", "span"
+        ):
+            if clean not in texts:
+                texts.append(clean)
+        sub_list = getattr(o, "children", []) or []
+        if not sub_list and hasattr(o, "IAccessibleObject"):
+            try:
+                import NVDAObjects.IAccessible
+                sub_list = NVDAObjects.IAccessible.IAccessible._get_children(o)
+            except Exception:
+                pass
+        for ch in sub_list:
+            _walk(ch, d + 1)
+    _walk(obj)
+    return texts
 
 
 def get_element_identifiers(obj):
@@ -462,6 +491,8 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
             return getattr(controlTypes.Role, "POPUPMENU", 102)
         elif "identity-menu-item" in class_name:
             return getattr(controlTypes.Role, "MENUITEM", 11)
+        elif "identity-menu-riot-id" in class_name:
+            return getattr(controlTypes.Role, "BUTTON", 9)
         try:
             return super().role
         except Exception:
@@ -487,6 +518,18 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
                 notice = f" ({raw_name})"
             return f"Menu da Conta: {user_tag} (Status: {status}){notice}"
 
+        # 0.04 Perfil do Usuário no topo do Menu da Conta aberto (identity-menu-riot-id)
+        if "identity-menu-riot-id" in class_name:
+            texts = extract_all_inner_text(self, max_depth=3)
+            if texts:
+                riot_id = "".join(texts) if any(t.startswith("#") for t in texts) else " ".join(texts)
+                return f"Perfil conectado: {riot_id} (Menu da Conta)"
+            user = get_riot_user_info()
+            user_tag = user["full_tag"] if user and user.get("full_tag") else ""
+            if user_tag:
+                return f"Perfil conectado: {user_tag} (Menu da Conta)"
+            return "Perfil conectado (Menu da Conta)"
+
         # 0.05 Itens do Menu da Conta (identity-menu-item)
         if "identity-menu-item" in class_name:
             if raw_name and raw_name.lower() not in ("item", "menuitem", "button", "botão"):
@@ -502,37 +545,111 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
 
         # 0.08 Itens de Navegação nas Configurações (settings-navigation-item)
         if "settings-navigation-item" in class_name:
-            clean_child_texts = []
-            try:
-                for c in (getattr(self, "children", None) or []):
-                    c_name = "".join(ch for ch in (c.name or "") if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
-                    if c_name and c_name.lower() not in ("animation", "lottie", "item"):
-                        clean_child_texts.append(c_name)
-            except Exception:
-                pass
-            if clean_child_texts:
-                return " - ".join(clean_child_texts).title()
+            texts = extract_all_inner_text(self, max_depth=3)
+            is_sub = "settings-sub-navigation-item" in class_name
+            sub_label = " (Sub-categoria de configuração)" if is_sub else ""
+            if texts:
+                return f"{' - '.join(texts).title()}{sub_label}"
             clean_self = "".join(ch for ch in (raw_name or "") if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
-            if clean_self:
-                return clean_self.title()
+            if clean_self and clean_self.lower() not in ("item", "opção de configuração"):
+                return f"{clean_self.title()}{sub_label}"
             return "Opção de Configuração"
 
         # 0.09 Fechar Modal / Configurações (riot-modal-close)
         if "riot-modal-close" in class_name or "settings-close" in class_name:
             return "Fechar configurações"
-        
+
+        # 0.091 Menus suspensos / Dropdowns nas Configurações (current-selection / dropdown)
+        if "current-selection" in class_name or "dropdown" in class_name:
+            clean_val = "".join(ch for ch in (raw_name or "") if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+            label = ""
+            try:
+                p = getattr(self, "parent", None)
+                if p:
+                    p_children = getattr(p.parent, "children", []) or []
+                    if p in p_children:
+                        idx = p_children.index(p)
+                        for prev in reversed(p_children[:idx]):
+                            prev_name = (getattr(prev, "name", "") or "").strip()
+                            if prev_name and len(prev_name) > 2 and prev_name.lower() not in ("dropdown", "imagem ilustrativa"):
+                                label = prev_name
+                                break
+            except Exception:
+                pass
+            if not label and getattr(self, "parent", None):
+                p_name = (getattr(self.parent, "name", "") or "").strip()
+                if p_name and len(p_name) > 2:
+                    label = p_name
+            label_prefix = f"{label.title()}: " if label else "Seleção: "
+            return f"{label_prefix}{clean_val} (Menu suspenso - pressione Enter para alterar)"
+
+        # 0.092 Campo Seletor de Pasta nas Configurações (folder-picker-input-field)
+        if "folder-picker-input-field" in class_name:
+            clean_path = "".join(ch for ch in (raw_name or "") if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+            return f"Local de instalação: {clean_path} (Pressione Enter para alterar pasta)"
+
+        # 0.093 Botão de testar som de notificações (notifications-settings-sound-button)
+        if "notifications-settings-sound-button" in class_name:
+            row_name = ""
+            try:
+                p = getattr(self, "parent", None)
+                while p:
+                    p_cls = get_element_identifiers(p)[1]
+                    p_tag = get_element_identifiers(p)[2]
+                    if "notifications-settings" in p_cls or p_tag in ("tr", "table"):
+                        for td in (getattr(p, "children", []) or []):
+                            td_cls = get_element_identifiers(td)[1]
+                            if "type" in td_cls:
+                                row_name = (getattr(td, "name", "") or "").strip()
+                                break
+                        break
+                    p = getattr(p, "parent", None)
+            except Exception:
+                pass
+            if row_name:
+                return f"Testar som de {row_name}"
+            return "Testar som de notificação"
+
+        # 0.094 Botões de ação do produto nas Configurações (Reparar, Criar atalho)
+        if "product-settings-button" in class_name:
+            clean = "".join(ch for ch in (raw_name or "") if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+            if "reparar" in clean.lower():
+                return "Reparar arquivos do jogo"
+            elif "atalho" in clean.lower():
+                return "Adicionar Atalho na Área de Trabalho"
+            return clean or "Botão de configuração do jogo"
+
         # Tratar botões de vídeo promocional (Video Off / Video On)
         if raw_name.lower() == "video off":
             return "Vídeo promocional (Pausado - pressione Enter para reproduzir)"
         elif raw_name.lower() == "video on":
             return "Vídeo promocional (Reproduzindo - pressione Enter para pausar)"
 
-        # Tratar botão de áudio/volume do vídeo promocional
-        if raw_name.lower() in ("volume on", "volumeon") or ("volume-button" in class_name and "on" in raw_name.lower()):
-            return "Áudio do vídeo promocional (Ativado - pressione Enter para silenciar)"
-        elif raw_name.lower() in ("volume off", "volumeoff", "mute") or ("volume-button" in class_name and "off" in raw_name.lower()):
-            return "Áudio do vídeo promocional (Silenciado - pressione Enter para ativar som)"
-        elif "volume-button" in class_name:
+        # Tratar botão de áudio/volume (Distinguindo Configurações de Notificações vs Vídeo Promocional)
+        if "volume-button" in class_name:
+            is_settings = False
+            try:
+                p = getattr(self, "parent", None)
+                for _ in range(5):
+                    if not p:
+                        break
+                    if "settings" in get_element_identifiers(p)[1].lower():
+                        is_settings = True
+                        break
+                    p = getattr(p, "parent", None)
+            except Exception:
+                pass
+            if is_settings:
+                if "off" in raw_name.lower() or "mute" in raw_name.lower():
+                    return "Ativar áudio das notificações (Silenciado)"
+                elif "on" in raw_name.lower():
+                    return "Silenciar volume das notificações (Ativado)"
+                return "Controle de volume das notificações"
+            # Fallback para vídeo promocional
+            if raw_name.lower() in ("volume on", "volumeon") or ("on" in raw_name.lower()):
+                return "Áudio do vídeo promocional (Ativado - pressione Enter para silenciar)"
+            elif raw_name.lower() in ("volume off", "volumeoff", "mute") or ("off" in raw_name.lower()):
+                return "Áudio do vídeo promocional (Silenciado - pressione Enter para ativar som)"
             return "Áudio do vídeo promocional"
 
         # 0. Botões de jogos na barra lateral (quick-action-disclosure)
@@ -588,18 +705,17 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
 
         # 0.2 Botão de navegação inicial / meus jogos (basic-nav-button)
         if "basic-nav-button" in class_name:
-            p = self.parent
-            for _ in range(3):
-                if not p:
+            curr = self
+            for _ in range(5):
+                if not curr:
                     break
-                p_desc = (getattr(p, "description", "") or "").strip()
-                if p_desc:
-                    if p_desc.lower() in ("início", "inicio", "home"):
-                        return "Página Inicial"
-                    elif p_desc.lower() in ("jogos", "games", "meus jogos"):
-                        return "Meus Jogos"
-                    return p_desc
-                p = getattr(p, "parent", None)
+                c_name = (getattr(curr, "name", "") or "").strip().lower()
+                c_desc = (getattr(curr, "description", "") or "").strip().lower()
+                if any(k in c_name or k in c_desc for k in ("jogos", "games", "meus jogos")):
+                    return "Meus Jogos"
+                elif any(k in c_name or k in c_desc for k in ("início", "inicio", "home", "página inicial")):
+                    return "Página Inicial"
+                curr = getattr(curr, "parent", None)
             return "Página Inicial"
 
         # 0.3 Botão de novidades e campanhas
@@ -706,7 +822,7 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
 
     def _get_firstChild(self):
         auto_id, class_name, _ = get_element_identifiers(self)
-        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse", "identity-menu-disclosure", "settings-navigation-item", "riot-modal-close", "video-button", "volume-button", "base-card-button")):
+        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse", "identity-menu-disclosure", "identity-menu-riot-id", "settings-navigation-item", "riot-modal-close", "video-button", "volume-button", "base-card-button", "current-selection", "folder-picker", "notifications-settings-sound-button", "product-settings-button")):
             return None
         raw = self.name
         if raw and raw.lower() not in ("botão", "button"):
@@ -715,7 +831,7 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
 
     def _get_children(self):
         auto_id, class_name, _ = get_element_identifiers(self)
-        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse", "identity-menu-disclosure", "settings-navigation-item", "riot-modal-close", "video-button", "volume-button", "base-card-button")):
+        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse", "identity-menu-disclosure", "identity-menu-riot-id", "settings-navigation-item", "riot-modal-close", "video-button", "volume-button", "base-card-button", "current-selection", "folder-picker", "notifications-settings-sound-button", "product-settings-button")):
             return []
         raw = self.name
         if raw and raw.lower() not in ("botão", "button"):
@@ -728,7 +844,10 @@ class RiotSmartLink(NVDAObjects.NVDAObject):
     Identifica e fornece texto claro para links de novidades, banners e artigos.
     """
     def _get_name(self):
-        raw_name = (super().name or "").strip()
+        try:
+            raw_name = (super().name or "").strip()
+        except Exception:
+            raw_name = getattr(self, "_name", "") or ""
         auto_id, class_name, tag = get_element_identifiers(self)
 
         # Tratar links de novidades e destaques (evitando leitura de imagem sem etiqueta)
@@ -736,18 +855,17 @@ class RiotSmartLink(NVDAObjects.NVDAObject):
             return "Novidades e Destaques"
 
         if "basic-nav-button" in class_name:
-            p = self.parent
-            for _ in range(3):
-                if not p:
+            curr = self
+            for _ in range(5):
+                if not curr:
                     break
-                p_desc = (getattr(p, "description", "") or "").strip()
-                if p_desc:
-                    if p_desc.lower() in ("início", "inicio", "home"):
-                        return "Página Inicial"
-                    elif p_desc.lower() in ("jogos", "games", "meus jogos"):
-                        return "Meus Jogos"
-                    return p_desc
-                p = getattr(p, "parent", None)
+                c_name = (getattr(curr, "name", "") or "").strip().lower()
+                c_desc = (getattr(curr, "description", "") or "").strip().lower()
+                if any(k in c_name or k in c_desc for k in ("jogos", "games", "meus jogos")):
+                    return "Meus Jogos"
+                elif any(k in c_name or k in c_desc for k in ("início", "inicio", "home", "página inicial")):
+                    return "Página Inicial"
+                curr = getattr(curr, "parent", None)
             return "Página Inicial"
 
         # Limpar prefixos estranhos ou "animation"
@@ -913,6 +1031,139 @@ class RiotSocialItem(NVDAObjects.NVDAObject):
         return "Amigo da lista social"
 
 
+def clean_game_card_name(raw_name):
+    """
+    Higieniza o nome dos cards da biblioteca de jogos do Riot Client,
+    removendo duplicações de texto (ex: 'VALORANT VALORANT') e identificando o status de instalação.
+    """
+    if not raw_name:
+        return "Jogo", False
+    is_installed = "instalado" in raw_name.lower() or "installed" in raw_name.lower()
+    import re
+    cleaned = re.sub(r'(?i)\b(instalado|installed)\b', '', raw_name).strip()
+    cleaned = ' '.join(cleaned.split())
+    tokens = cleaned.split()
+    half = len(tokens) // 2
+    if len(tokens) >= 2 and len(tokens) % 2 == 0 and tokens[:half] == tokens[half:]:
+        cleaned = " ".join(tokens[:half])
+    elif len(cleaned) > 4 and cleaned.endswith(cleaned[:len(cleaned)//2]):
+        cleaned = cleaned[:len(cleaned)//2].strip()
+    return cleaned or "Jogo", is_installed
+
+
+class RiotLibraryProductCard(NVDAObjects.NVDAObject):
+    """
+    Identifica e anuncia os cards de jogos da Biblioteca ('Meus Jogos'),
+    eliminando redundâncias (ex: 'VALORANT VALORANT') e informando claramente se o jogo está instalado.
+    """
+    def _get_role(self):
+        return getattr(controlTypes.Role, "BUTTON", 9)
+
+    def _get_roleText(self):
+        return "jogo"
+
+    def _get_name(self):
+        try:
+            raw_name = (super().name or "").strip()
+        except Exception:
+            raw_name = getattr(self, "_name", "") or ""
+        if not raw_name:
+            texts = extract_all_inner_text(self, max_depth=4)
+            raw_name = " ".join(texts)
+
+        clean_title, is_installed = clean_game_card_name(raw_name)
+        status_str = "Instalado" if is_installed else "Não instalado"
+        return f"Jogo: {clean_title} (Status: {status_str}) - Pressione Enter para abrir"
+
+    def _get_firstChild(self):
+        return None
+
+    def _get_children(self):
+        return []
+
+
+class RiotSmartToggle(NVDAObjects.NVDAObject):
+    """
+    Melhora a acessibilidade de caixas de seleção, alternadores (toggles) e botões de rádio
+    nas Configurações do Riot Client (Inicialização, Aceleração de hardware, Filtro de chat, Notificações).
+    """
+    def _get_role(self):
+        auto_id, class_name, tag = get_element_identifiers(self)
+        if "radio" in class_name or getattr(self, "role", 0) == getattr(controlTypes.Role, "RADIOBUTTON", 11):
+            return getattr(controlTypes.Role, "RADIOBUTTON", 11)
+        return getattr(controlTypes.Role, "CHECKBOX", 10)
+
+    def _get_name(self):
+        try:
+            raw_name = (super().name or "").strip()
+        except Exception:
+            raw_name = getattr(self, "_name", "") or ""
+        auto_id, class_name, tag = get_element_identifiers(self)
+
+        # Se for na tabela de notificações (Alertas ou Sons)
+        if "notifications-settings" in class_name:
+            col_name = "Alertas" if "alert" in class_name else ("Sons" if "sound" in class_name else "")
+            row_name = ""
+            try:
+                p = getattr(self, "parent", None)
+                while p:
+                    p_cls = get_element_identifiers(p)[1]
+                    p_tag = get_element_identifiers(p)[2]
+                    if "notifications-settings" in p_cls or p_tag in ("tr", "table"):
+                        cells = getattr(p, "children", []) or []
+                        for td in cells:
+                            td_cls = get_element_identifiers(td)[1]
+                            if "type" in td_cls:
+                                row_name = (getattr(td, "name", "") or "").strip()
+                                break
+                        if not col_name and self in cells:
+                            idx = cells.index(self)
+                            if idx == 1:
+                                col_name = "Alertas"
+                            elif idx == 2:
+                                col_name = "Sons"
+                        break
+                    p = getattr(p, "parent", None)
+            except Exception:
+                pass
+            if not col_name:
+                col_name = "Alertas" if "alert" in class_name else ("Sons" if "sound" in class_name else "Notificação")
+            if row_name:
+                return f"{row_name} - {col_name}"
+            return f"Opção de notificação: {col_name}"
+
+        # Se tiver nome próprio legítimo
+        clean = "".join(ch for ch in raw_name if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+        if clean and clean.lower() not in ("checkbox", "toggle", "switch", "radio", "botão", "button"):
+            return clean
+
+        # Buscar rótulo no elemento pai ou irmãos anteriores
+        label = ""
+        try:
+            p = getattr(self, "parent", None)
+            if p:
+                for sib in (getattr(p, "children", []) or []):
+                    if sib is not self:
+                        sib_name = "".join(ch for ch in (getattr(sib, "name", "") or "") if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+                        if sib_name and len(sib_name) > 3 and sib_name.lower() not in ("checkbox", "toggle", "switch"):
+                            label = sib_name
+                            break
+                if not label and getattr(p, "name", ""):
+                    p_name = "".join(ch for ch in p.name if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+                    if p_name and len(p_name) > 3:
+                        label = p_name
+        except Exception:
+            pass
+
+        return label or "Alternador de configuração"
+
+    def _get_firstChild(self):
+        return None
+
+    def _get_children(self):
+        return []
+
+
 # ============================================================================
 # MÓDULO PRINCIPAL DO RIOT CLIENT
 # ============================================================================
@@ -939,35 +1190,47 @@ class AppModule(appModuleHandler.AppModule):
             elif role == ROLE_TAB or "tab-button" in class_name or "tab" in auto_id or tag == "tab" or (tag == "button" and "tab" in class_name):
                 clsList.insert(0, RiotSmartTab)
 
-            # 2. Tratar Campos de Edição e Inputs de Texto (Nome do jogo, Tagline, busca, etc.)
-            elif role == ROLE_EDITABLETEXT or (tag == "input" and "button" not in class_name) or "text-input" in class_name:
+            # 2. Silenciar invólucros e prefixos de inputs de texto (evita repetição de "Campo de texto")
+            elif any(k in class_name for k in ("text-input-wrapper", "text-input-prefix-icon", "text-input-suffix")):
+                clsList.insert(0, RiotDecorativeAnimation)
+
+            # 3. Tratar Campos de Edição e Inputs de Texto (Nome do jogo, Tagline, busca, etc.)
+            elif role == ROLE_EDITABLETEXT or (tag == "input" and "button" not in class_name) or "text-input-field" in class_name:
                 clsList.insert(0, RiotSmartEdit)
 
-            # 3. Tratar Itens do Painel Social (Amigos e Presenças)
+            # 4. Tratar cards de jogos da Biblioteca ('Meus Jogos')
+            elif "library-product-card" in class_name or "library-game-card" in class_name:
+                clsList.insert(0, RiotLibraryProductCard)
+
+            # 5. Tratar caixas de seleção, alternadores (toggles) e botões de rádio
+            elif role in (ROLE_CHECKBOX, ROLE_RADIOBUTTON, ROLE_TOGGLEBUTTON) or any(k in class_name for k in ("toggle", "checkbox", "radio-button")) or "notifications-settings-toggle" in class_name:
+                clsList.insert(0, RiotSmartToggle)
+
+            # 6. Tratar Itens do Painel Social (Amigos e Presenças)
             elif "social-item" in class_name and not any(k in class_name for k in ("avatar", "heading", "caption")):
                 clsList.insert(0, RiotSocialItem)
 
-            # 4. Tratar Avatares no Painel Social como Decorativos (evita ruído de imagem redundante)
-            elif "social-item-avatar" in class_name:
+            # 7. Tratar Avatares e Ícones Decorativos no Painel Social e Configurações
+            elif any(k in class_name for k in ("social-item-avatar", "settings-header-title-icon-image", "platform-availability-section-type-icon")):
                 clsList.insert(0, RiotDecorativeAnimation)
 
-            # 5. Silencia nós de animação e ícones SVG/Lottie internos dentro de abas ou botões
+            # 8. Silencia nós de animação e ícones SVG/Lottie internos dentro de abas ou botões
             elif raw_name in ("animation", "lottie") and (tag in ("div", "svg", "lottie", "span") or not class_name or (getattr(obj, "parent", None) and getattr(obj.parent, "role", None) in (ROLE_BUTTON, ROLE_TAB))):
                 clsList.insert(0, RiotDecorativeAnimation)
 
-            # 6. Tratar Botões e Menus Interativos (incluindo menu da conta, disclosures, navegação e itens de configuração)
-            elif role in (ROLE_BUTTON, ROLE_POPUPMENU, ROLE_MENUITEM) or "button" in class_name or tag == "button" or "disclosure" in class_name or "settings-navigation-item" in class_name:
+            # 9. Tratar Botões e Menus Interativos (incluindo menu da conta, disclosures, navegação e itens de configuração)
+            elif role in (ROLE_BUTTON, ROLE_POPUPMENU, ROLE_MENUITEM) or "button" in class_name or tag == "button" or "disclosure" in class_name or "settings-navigation-item" in class_name or "folder-picker-input-field" in class_name:
                 clsList.insert(0, RiotSmartButton)
 
-            # 7. Tratar Links
+            # 10. Tratar Links
             elif role == ROLE_LINK or "link" in class_name or tag == "a":
                 clsList.insert(0, RiotSmartLink)
 
-            # 8. Silencia elementos de animação pura ou decorativos que não sejam botões/guias/inputs
+            # 11. Silencia elementos de animação pura ou decorativos que não sejam botões/guias/inputs
             elif role == ROLE_ANIMATION or tag == "svg" or (raw_name in ("animation", "lottie") and not any(k in class_name for k in ("tab", "button", "disclosure", "item", "input"))):
                 clsList.insert(0, RiotDecorativeAnimation)
 
-            # 9. Tratar imagens e gráficos sem texto alternativo
+            # 12. Tratar imagens e gráficos sem texto alternativo
             elif role == ROLE_GRAPHIC or tag == "img":
                 clsList.insert(0, RiotAccessibleGraphic)
 
@@ -1394,6 +1657,82 @@ class AppModule(appModuleHandler.AppModule):
         ui.message("Guias do jogo não localizadas na tela atual.")
 
     @script(
+        description="Navega diretamente para a Biblioteca de Jogos (Meus Jogos) no Riot Client.",
+        gestures=["kb:NVDA+shift+l", "kb:control+shift+l"]
+    )
+    def script_focusGameLibrary(self, gesture):
+        """Localiza o botão 'Meus Jogos' na barra lateral de navegação e transfere o foco/aciona."""
+        try:
+            fg = api.getForegroundObject()
+            if fg:
+                target = None
+                def find_games_btn(o, depth=0):
+                    nonlocal target
+                    if target or depth > 25:
+                        return
+                    ia2 = getattr(o, "IA2Attributes", None)
+                    c_cls = ia2.get("class", "") if (ia2 and hasattr(ia2, "items")) else ""
+                    desc = (getattr(o, "description", "") or "").lower()
+                    name = (getattr(o, "name", "") or "").lower()
+                    if ("basic-nav-button" in c_cls or "slide-tooltip-disclosure" in c_cls) and any(k in desc or k in name for k in ("jogos", "games", "meus jogos")):
+                        target = o
+                        return
+                    for c in (getattr(o, "children", None) or []):
+                        find_games_btn(c, depth + 1)
+                find_games_btn(fg)
+                if not target:
+                    find_games_btn(api.getDesktopObject())
+                if target:
+                    target.setFocus()
+                    try:
+                        target.doAction()
+                    except Exception:
+                        pass
+                    ui.message("Biblioteca de jogos (Meus Jogos) aberta.")
+                    return
+        except Exception as e:
+            log.debug(f"lolAccessibility: Erro ao focar Meus Jogos: {e}")
+        ui.message("Não foi possível localizar o botão Meus Jogos.")
+
+    @script(
+        description="Navega diretamente para a Página Inicial (Início) do Riot Client.",
+        gestures=["kb:NVDA+shift+i", "kb:control+shift+i"]
+    )
+    def script_focusHome(self, gesture):
+        """Localiza o botão 'Página Inicial' na barra lateral de navegação e transfere o foco/aciona."""
+        try:
+            fg = api.getForegroundObject()
+            if fg:
+                target = None
+                def find_home_btn(o, depth=0):
+                    nonlocal target
+                    if target or depth > 25:
+                        return
+                    ia2 = getattr(o, "IA2Attributes", None)
+                    c_cls = ia2.get("class", "") if (ia2 and hasattr(ia2, "items")) else ""
+                    desc = (getattr(o, "description", "") or "").lower()
+                    name = (getattr(o, "name", "") or "").lower()
+                    if ("basic-nav-button" in c_cls or "slide-tooltip-disclosure" in c_cls) and any(k in desc or k in name for k in ("início", "inicio", "home", "página inicial")):
+                        target = o
+                        return
+                    for c in (getattr(o, "children", None) or []):
+                        find_home_btn(c, depth + 1)
+                find_home_btn(fg)
+                if not target:
+                    find_home_btn(api.getDesktopObject())
+                if target:
+                    target.setFocus()
+                    try:
+                        target.doAction()
+                    except Exception:
+                        pass
+                    ui.message("Página Inicial do Riot Client aberta.")
+                    return
+        except Exception as e:
+            log.debug(f"lolAccessibility: Erro ao focar Página Inicial: {e}")
+        ui.message("Não foi possível localizar o botão Página Inicial.")
+
+    @script(
         description="Exibe os atalhos de acessibilidade do Riot Client e League of Legends.",
         gestures=["kb:f1"]
     )
@@ -1402,6 +1741,8 @@ class AppModule(appModuleHandler.AppModule):
             "Atalhos de Acessibilidade Riot & LoL: "
             "Control+Shift+U: Menu da Conta, Perfil e Status. "
             "Control+Shift+P: Abrir Configurações do Riot Client. "
+            "Control+Shift+L: Biblioteca de Jogos (Meus Jogos). "
+            "Control+Shift+I: Página Inicial do Riot Client. "
             "Control+Shift+O: Guias Sociais (Amigos, Conversas, Pedidos). "
             "Control+Shift+H: Guias Centrais do Jogo (Visão Geral, Notas de Atualização, etc.). "
             "Control+Shift+A: Campo Adicionar Amigo (Riot ID). "

@@ -1335,6 +1335,165 @@ def test_upper_menus_and_social_tabs():
     print("OK: Menus superiores, abas sociais, game hub, campos de edição e amigos validados com 100% de sucesso.")
 
 
+def test_library_cards_and_settings_controls():
+    """Testa higienização e acessibilidade de cards de jogos, gaveta de configurações e alternadores."""
+    print("Testando acessibilidade de cards da biblioteca, configurações e alternadores...")
+    import types
+    sys.path.insert(0, os.path.join(ROOT_DIR, "appModules"))
+    import riotclient
+    from riotclient import clean_game_card_name, RiotLibraryProductCard, RiotSmartToggle, RiotSmartButton, RiotSmartLink
+
+    # 1. Teste de clean_game_card_name
+    title1, inst1 = clean_game_card_name("League of Legends Instalado League of Legends")
+    assert title1 == "League of Legends"
+    assert inst1 is True
+
+    title2, inst2 = clean_game_card_name("2XKO 2XKO")
+    assert title2 == "2XKO"
+    assert inst2 is False
+
+    title3, inst3 = clean_game_card_name("VALORANT VALORANT")
+    assert title3 == "VALORANT"
+    assert inst3 is False
+
+    title4, inst4 = clean_game_card_name("Teamfight Tactics Instalado Teamfight Tactics")
+    assert title4 == "Teamfight Tactics"
+    assert inst4 is True
+
+    # 2. Teste de RiotLibraryProductCard
+    class MockProductCard(RiotLibraryProductCard):
+        def __init__(self, raw_name):
+            self._name = raw_name
+            self.children = []
+            self.location = None
+        @property
+        def name(self):
+            return self._name
+        @property
+        def IA2Attributes(self):
+            return {"class": "library-product-card", "tag": "div"}
+
+    card_lol = MockProductCard("League of Legends Instalado League of Legends")
+    assert card_lol._get_name() == "Jogo: League of Legends (Status: Instalado) - Pressione Enter para abrir"
+    assert card_lol._get_role() == 9
+    assert card_lol._get_roleText() == "jogo"
+    assert card_lol._get_children() == []
+    assert card_lol._get_firstChild() is None
+
+    card_val = MockProductCard("VALORANT VALORANT")
+    assert card_val._get_name() == "Jogo: VALORANT (Status: Não instalado) - Pressione Enter para abrir"
+
+    # 3. Teste de RiotSmartToggle
+    class MockToggle(RiotSmartToggle):
+        def __init__(self, raw_name="", class_name="toggle", parent=None):
+            self._name = raw_name
+            self._class = class_name
+            self.parent = parent
+            self.children = []
+            self.location = None
+        @property
+        def name(self):
+            return self._name
+        @property
+        def IA2Attributes(self):
+            return {"class": self._class, "tag": "button"}
+
+    # Toggle em tabela de notificações (Alertas e Sons)
+    row_type = types.SimpleNamespace(name="Pedidos de amizade", IA2Attributes={"class": "notifications-settings-type", "tag": "td"}, children=[])
+    row_parent = types.SimpleNamespace(
+        IA2Attributes={"class": "notifications-settings-row", "tag": "tr"},
+        children=[],
+        parent=None
+    )
+    notif_toggle_alert = MockToggle(raw_name="", class_name="notifications-settings-toggle", parent=row_parent)
+    notif_toggle_sound = MockToggle(raw_name="", class_name="notifications-settings-toggle", parent=row_parent)
+    row_parent.children = [row_type, notif_toggle_alert, notif_toggle_sound]
+
+    assert notif_toggle_alert._get_name() == "Pedidos de amizade - Alertas"
+    assert notif_toggle_alert._get_role() == 10
+
+    assert notif_toggle_sound._get_name() == "Pedidos de amizade - Sons"
+    assert notif_toggle_sound._get_role() == 10
+
+    # Toggle comum com rótulo
+    gen_toggle = MockToggle(raw_name="Iniciar o Cliente Riot ao ligar o computador", class_name="toggle")
+    assert gen_toggle._get_name() == "Iniciar o Cliente Riot ao ligar o computador"
+
+    # 4. Teste de Controles de Configuração em RiotSmartButton
+    class MockBtn(RiotSmartButton):
+        def __init__(self, class_name, raw_name, parent=None, children=None):
+            self._class = class_name
+            self._name = raw_name
+            self.parent = parent
+            self._children = children or []
+            self.location = None
+        @property
+        def name(self):
+            return self._name
+        @property
+        def children(self):
+            return self._children
+        @property
+        def IA2Attributes(self):
+            return {"class": self._class, "tag": "button"}
+
+    # Menu suspenso / dropdown
+    dropdown_parent = types.SimpleNamespace(
+        name="Idioma atual",
+        IA2Attributes={"class": "dropdown-wrapper"},
+        parent=None,
+        children=[]
+    )
+    dd_btn = MockBtn("current-selection", "Português", parent=dropdown_parent)
+    assert "Idioma Atual: Português (Menu suspenso" in dd_btn._get_name()
+
+    # Seletor de pasta
+    folder_btn = MockBtn("folder-picker-input-field", "C:\\Riot Games")
+    assert folder_btn._get_name() == "Local de instalação: C:\\Riot Games (Pressione Enter para alterar pasta)"
+
+    # Botão de testar som de notificação
+    sound_btn = MockBtn("notifications-settings-sound-button", "", parent=row_parent)
+    assert sound_btn._get_name() == "Testar som de Pedidos de amizade"
+
+    # Botões de reparo e atalho do produto
+    repair_btn = MockBtn("product-settings-button", "Reparar")
+    assert repair_btn._get_name() == "Reparar arquivos do jogo"
+
+    shortcut_btn = MockBtn("product-settings-button", "Atalho")
+    assert shortcut_btn._get_name() == "Adicionar Atalho na Área de Trabalho"
+
+    # Perfil / Riot ID no topo do menu da conta
+    id_child1 = types.SimpleNamespace(name="jhonata", children=[], IA2Attributes={})
+    id_child2 = types.SimpleNamespace(name="#2515", children=[], IA2Attributes={})
+    id_header = MockBtn("identity-menu-riot-id", "", children=[id_child1, id_child2])
+    assert id_header._get_name() == "Perfil conectado: jhonata#2515 (Menu da Conta)"
+
+    # 5. Teste de distinção Meus Jogos vs Página Inicial em RiotSmartLink
+    class MockLink(RiotSmartLink):
+        def __init__(self, class_name, raw_name, parent=None):
+            self._class = class_name
+            self._name = raw_name
+            self.parent = parent
+            self.children = []
+            self.location = None
+        @property
+        def name(self):
+            return self._name
+        @property
+        def IA2Attributes(self):
+            return {"class": self._class, "tag": "a"}
+
+    parent_games = types.SimpleNamespace(name="Meus Jogos", description="Jogos", IA2Attributes={"class": "slide-tooltip-disclosure"}, parent=None)
+    link_games = MockLink("basic-nav-button", "", parent=parent_games)
+    assert link_games._get_name() == "Meus Jogos"
+
+    parent_home = types.SimpleNamespace(name="Página Inicial", description="Início", IA2Attributes={"class": "slide-tooltip-disclosure"}, parent=None)
+    link_home = MockLink("basic-nav-button", "", parent=parent_home)
+    assert link_home._get_name() == "Página Inicial"
+
+    print("OK: Cards da biblioteca, configurações e alternadores validados com 100% de sucesso.")
+
+
 if __name__ == "__main__":
     test_syntax()
     test_manifest()
@@ -1358,6 +1517,7 @@ if __name__ == "__main__":
     test_lcu_reverse_engineering_and_vanguard()
     test_riot_client_rea_enhancements()
     test_upper_menus_and_social_tabs()
+    test_library_cards_and_settings_controls()
     print("\nTodos os testes unitários passaram com 100% de sucesso!")
 
 

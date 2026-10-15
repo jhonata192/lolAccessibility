@@ -8,6 +8,7 @@ __pycache__/
 *.tmp
 temp/
 scratch/
+scripts/*.json
 
 # Build artifacts (binaries are published via GitHub Releases)
 *.nvda-addon

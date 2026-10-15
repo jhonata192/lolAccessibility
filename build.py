@@ -51,7 +51,7 @@ def build():
             elif os.path.isdir(src_path):
                 for root, _, files in os.walk(src_path):
                     for file in files:
-                        if file.endswith((".pyc", ".git", ".DS_Store")):
+                        if file.endswith((".pyc", ".git", ".DS_Store", ".json")):
                             continue
                         if "__pycache__" in root:
                             continue
