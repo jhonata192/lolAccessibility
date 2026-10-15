@@ -751,12 +751,20 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
         elif "tos-content-error-retry" in search_target:
             return "Tentar novamente carregar Termos de Serviço"
 
-        # 1. Controles de Janela
-        if "close" in search_target or "fechar" in search_target:
+        # 1. Controles Específicos de Notificações, Chat e Modais
+        if any(k in search_target for k in ("notification-card-close-button", "toast-close-button", "toast-dismiss")):
+            return "Fechar notificação"
+        elif "chat-window-close" in search_target:
+            return "Fechar Bate-papo"
+        elif "riot-modal-close" in search_target or "whats-new-modal" in search_target:
+            return "Fechar janela de aviso"
+
+        # 1.1 Controles de Janela Principal
+        elif ("close" in search_target or "fechar" in search_target) and not any(k in search_target for k in ("card", "chat", "modal", "toast", "notif")):
             return "Fechar janela"
-        elif "min" in search_target or "minimizar" in search_target:
+        elif ("min" in search_target or "minimizar" in search_target) and not any(k in search_target for k in ("card", "chat", "modal", "toast", "notif")):
             return "Minimizar janela"
-        elif "max" in search_target or "maximizar" in search_target:
+        elif ("max" in search_target or "maximizar" in search_target) and not any(k in search_target for k in ("card", "chat", "modal", "toast", "notif")):
             return "Maximizar janela"
 
         # 2. Carrossel e Mídia
@@ -782,16 +790,23 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
             return "Notificações"
         elif any(k in search_target for k in ["downloadsquare", "download"]):
             return "Gerenciador de Downloads"
-        elif any(k in search_target for k in ["friend", "social-presence-bar", "social-presence-button"]):
-            return "Painel Social e Amigos"
+        elif any(k in search_target for k in ("friend-request-action", "social-friend-request", "invite-card")):
+            if any(k in search_target for k in ("accept", "checkmark", "primary")):
+                return "Aceitar pedido ou convite"
+            elif any(k in search_target for k in ("decline", "cancel", "close", "secondary")):
+                return "Recusar ou cancelar pedido ou convite"
+        elif "invite-card-nav-button" in search_target:
+            return "Alternar convites de jogo"
+        elif any(k in search_target for k in ("notification-card-close-button", "toast-close-button", "toast-dismiss")):
+            return "Fechar notificação"
         elif "add-friend" in search_target:
             return "Adicionar Amigo"
         elif "chat-window-close" in search_target:
             return "Fechar Bate-papo"
         elif "social-chat-item" in search_target:
             return "Conversa"
-        elif "social-friend-item" in search_target:
-            return "Amigo"
+        elif any(k in search_target for k in ["social-presence-bar", "social-presence-button"]):
+            return "Painel Social e Amigos"
         elif "whats-new-modal" in search_target:
             return "Fechar novidades"
 
@@ -995,6 +1010,77 @@ class RiotSmartEdit(NVDAObjects.NVDAObject):
             return "Digite o Riot ID do jogador que você deseja adicionar como amigo"
 
         return desc
+
+
+class RiotGameInviteCard(NVDAObjects.NVDAObject):
+    """
+    Identifica e resume os cards de convite de partida recebidos de amigos no Riot Client.
+    Ex: 'Convite de Partida: De Fulano, Modo: Summoner's Rift (Grupo: 2/5)'.
+    """
+    def _get_role(self):
+        return getattr(controlTypes.Role, "GROUPING", 20)
+
+    def _get_roleText(self):
+        return "convite de jogo"
+
+    def _get_name(self):
+        inviter = ""
+        mode = ""
+        party_size = ""
+        try:
+            texts = extract_all_inner_text(self, max_depth=5)
+            for t in texts:
+                t_lower = t.lower()
+                if "/" in t and any(ch.isdigit() for ch in t):
+                    party_size = t
+                elif any(m in t_lower for m in ("rift", "aram", "normal", "ranqueada", "ranked", "tft", "arena", "alternada")):
+                    mode = t
+                elif not inviter and len(t) > 2 and t_lower not in ("jogar", "aceitar", "recusar", "convite", "grupo"):
+                    inviter = t
+        except Exception:
+            pass
+        parts = []
+        if inviter:
+            parts.append(f"De: {inviter}")
+        if mode:
+            parts.append(f"Modo: {mode}")
+        if party_size:
+            parts.append(f"Grupo: {party_size}")
+        if parts:
+            return f"Convite de Partida: {', '.join(parts)}"
+        return "Convite de Partida recebido de amigo"
+
+    def _get_firstChild(self):
+        return super().firstChild
+
+    def _get_children(self):
+        return super().children
+
+
+class RiotFriendRequestItem(NVDAObjects.NVDAObject):
+    """
+    Identifica e anuncia itens de pedidos de amizade pendentes na aba Pedidos de Amizade.
+    Ex: 'Pedido de amizade de: Invocador#BR1'.
+    """
+    def _get_role(self):
+        return getattr(controlTypes.Role, "LISTITEM", 15)
+
+    def _get_roleText(self):
+        return "pedido de amizade"
+
+    def _get_name(self):
+        texts = extract_all_inner_text(self, max_depth=4)
+        filtered = [t for t in texts if t.lower() not in ("aceitar", "recusar", "cancelar", "botão", "button", "item")]
+        clean_name = " ".join(filtered)
+        if clean_name:
+            return f"Pedido de amizade de: {clean_name}"
+        return "Pedido de amizade pendente"
+
+    def _get_firstChild(self):
+        return super().firstChild
+
+    def _get_children(self):
+        return super().children
 
 
 class RiotSocialItem(NVDAObjects.NVDAObject):
@@ -1271,7 +1357,15 @@ class AppModule(appModuleHandler.AppModule):
             elif role in (ROLE_CHECKBOX, ROLE_RADIOBUTTON, ROLE_TOGGLEBUTTON) or any(k in class_name for k in ("toggle", "checkbox", "radio-button")) or "notifications-settings-toggle" in class_name:
                 clsList.insert(0, RiotSmartToggle)
 
-            # 6. Tratar Itens do Painel Social (Amigos e Presenças)
+            # 6. Tratar Convites de Partida / Grupo (descobertos via REA)
+            elif "invite-card" in class_name and not any(k in class_name for k in ("button", "close", "nav", "action", "footer")):
+                clsList.insert(0, RiotGameInviteCard)
+
+            # 6.1 Tratar Pedidos de Amizade (descobertos via REA)
+            elif "social-friend-request-item" in class_name or "friend-request-item" in class_name:
+                clsList.insert(0, RiotFriendRequestItem)
+
+            # 6.2 Tratar Itens do Painel Social (Amigos e Presenças)
             elif "social-item" in class_name and not any(k in class_name for k in ("avatar", "heading", "caption")):
                 clsList.insert(0, RiotSocialItem)
 

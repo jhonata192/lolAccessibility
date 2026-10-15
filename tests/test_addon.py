@@ -1339,7 +1339,10 @@ def test_library_cards_and_settings_controls():
     import types
     sys.path.insert(0, os.path.join(ROOT_DIR, "appModules"))
     import riotclient
-    from riotclient import clean_game_card_name, RiotLibraryProductCard, RiotSmartToggle, RiotSmartButton, RiotSmartLink
+    from riotclient import (
+        clean_game_card_name, RiotLibraryProductCard, RiotSmartToggle,
+        RiotSmartButton, RiotSmartLink, RiotGameInviteCard, RiotFriendRequestItem
+    )
 
     # 1. Teste de clean_game_card_name
     title1, inst1 = clean_game_card_name("League of Legends Instalado League of Legends")
@@ -1489,7 +1492,54 @@ def test_library_cards_and_settings_controls():
     link_home = MockLink("basic-nav-button", "", parent=parent_home)
     assert link_home._get_name() == "Página Inicial"
 
-    print("OK: Cards da biblioteca, configurações e alternadores validados com 100% de sucesso.")
+    # 6. Teste de RiotGameInviteCard e RiotFriendRequestItem (descobertos via REA)
+    class MockInvite(RiotGameInviteCard):
+        def __init__(self, children):
+            self.children = children
+            self.location = None
+        @property
+        def name(self):
+            return ""
+        @property
+        def IA2Attributes(self):
+            return {"class": "invite-card", "tag": "div"}
+
+    inv_child1 = types.SimpleNamespace(name="AmigoPro", children=[], IA2Attributes={})
+    inv_child2 = types.SimpleNamespace(name="Summoner's Rift - Normal Alternada", children=[], IA2Attributes={})
+    inv_child3 = types.SimpleNamespace(name="3/5", children=[], IA2Attributes={})
+    invite_obj = MockInvite([inv_child1, inv_child2, inv_child3])
+    assert "De: AmigoPro" in invite_obj._get_name()
+    assert "Summoner's Rift" in invite_obj._get_name()
+    assert "3/5" in invite_obj._get_name()
+    assert invite_obj._get_roleText() == "convite de jogo"
+
+    class MockReq(RiotFriendRequestItem):
+        def __init__(self, children):
+            self.children = children
+            self.location = None
+        @property
+        def name(self):
+            return ""
+        @property
+        def IA2Attributes(self):
+            return {"class": "social-friend-request-item", "tag": "div"}
+
+    req_name = types.SimpleNamespace(name="NovoAmigo#BR1", children=[], IA2Attributes={})
+    req_obj = MockReq([req_name])
+    assert req_obj._get_name() == "Pedido de amizade de: NovoAmigo#BR1"
+    assert req_obj._get_roleText() == "pedido de amizade"
+
+    # Botões de ação em pedidos de amizade e notificações
+    btn_accept = MockBtn("social-friend-request-action-accept", "")
+    assert btn_accept._get_name() == "Aceitar pedido ou convite"
+
+    btn_decline = MockBtn("social-friend-request-action-decline", "")
+    assert btn_decline._get_name() == "Recusar ou cancelar pedido ou convite"
+
+    btn_notif_close = MockBtn("notification-card-close-button", "")
+    assert btn_notif_close._get_name() == "Fechar notificação"
+
+    print("OK: Cards da biblioteca, configurações, alternadores, convites e pedidos validados com 100% de sucesso.")
 
 
 if __name__ == "__main__":
