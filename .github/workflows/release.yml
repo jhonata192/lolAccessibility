@@ -1,0 +1,80 @@
+name: Build and Release NVDA Add-on
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Run Unit Tests
+        run: |
+          python tests/test_addon.py
+
+      - name: Compile NVDA Add-on (.nvda-addon)
+        id: build_addon
+        run: |
+          python build.py
+          ADDON_FILE=$(ls lolAccessibility-*.nvda-addon | head -n 1)
+          if [ -z "$ADDON_FILE" ]; then
+            echo "Error: Add-on file not generated!"
+            exit 1
+          fi
+          echo "ADDON_FILE=$ADDON_FILE" >> $GITHUB_ENV
+          VERSION=$(grep -E '^version[[:space:]]*=' manifest.ini | cut -d'=' -f2 | tr -d ' \r\n')
+          echo "ADDON_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "Generated add-on: $ADDON_FILE (Version: $VERSION)"
+
+      - name: Create or Update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ env.ADDON_VERSION }}"
+          ADDON_FILE="${{ env.ADDON_FILE }}"
+          
+          echo "Processing release for version $VERSION with asset $ADDON_FILE"
+          
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            RELEASE_TAG="v$VERSION-build.${{ github.run_number }}"
+            RELEASE_TITLE="lolAccessibility v$VERSION (Build #${{ github.run_number }})"
+            PRERELEASE_FLAG="--prerelease"
+          else
+            RELEASE_TAG="v$VERSION"
+            RELEASE_TITLE="lolAccessibility v$VERSION"
+            PRERELEASE_FLAG=""
+          fi
+          
+          echo "Target Release Tag: $RELEASE_TAG"
+          echo "Target Release Title: $RELEASE_TITLE"
+          
+          gh release create "$RELEASE_TAG" "$ADDON_FILE" \
+            --title "$RELEASE_TITLE" \
+            --generate-notes \
+            $PRERELEASE_FLAG
+          
+          if [ "$RELEASE_TAG" != "v$VERSION" ] && gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "Updating main release v$VERSION with newest add-on build..."
+            gh release upload "v$VERSION" "$ADDON_FILE" --clobber || true
+          fi
+          
+          echo "Release $RELEASE_TAG successfully published!"
