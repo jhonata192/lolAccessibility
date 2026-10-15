@@ -866,9 +866,11 @@ class LeagueChromeVBuf(ChromeVBuf):
 
 
 class LeagueDocument(NVDAObjects.NVDAObject):
-    """Documento do League Client."""
+    """Documento do League Client (CEF).
+    Desativa o buffer virtual para garantir navegação limpa e direta por foco (Tab / Shift+Tab).
+    """
     def _get_treeInterceptorClass(self):
-        return LeagueChromeVBuf
+        return None
 
 
 class LeagueDecorativeAnimation(NVDAObjects.NVDAObject):
@@ -1074,11 +1076,13 @@ class LeagueTutorialCard(NVDAObjects.NVDAObject):
         else:
             status = "Disponível - Pressione Enter para iniciar"
 
+        is_selected = "selected" in class_name
+        sel_prefix = "[Selecionado] " if is_selected else ""
         parts = []
         if seq:
-            parts.append(f"Tutorial {seq}: {title or 'Etapa do Tutorial'}")
+            parts.append(f"{sel_prefix}Tutorial {seq}: {title or 'Etapa do Tutorial'}")
         else:
-            parts.append(title or "Tutorial do LoL")
+            parts.append(f"{sel_prefix}{title or 'Tutorial do LoL'}")
 
         parts.append(f"(Status: {status})")
         if rew:
@@ -1211,8 +1215,19 @@ class LeagueSmartButton(NVDAObjects.NVDAObject):
             return "Próximo tutorial"
         elif tag == "lol-uikit-close-button" or "hide-close-button" in class_name:
             return "Fechar"
-        elif "cta-button" in class_name or "npe-footer" in class_name:
-            return "Iniciar Tutorial"
+        elif "cta-button" in class_name or "npe-footer" in class_name or "play-button" in target or raw_name.upper() in ("COMEÇAR", "START"):
+            tut_name = ""
+            try:
+                if callable(get_lcu_npe_status):
+                    st = get_lcu_npe_status()
+                    if st and st.get("tutorials"):
+                        for t in st["tutorials"]:
+                            if t.get("status") in ("UNLOCKED", "IN_PROGRESS") and t.get("type") != "REWARD":
+                                tut_name = f" {t.get('stepNumber', '')}: {t.get('title', '')}"
+                                break
+            except Exception:
+                pass
+            return f"Iniciar Tutorial{tut_name}" if tut_name else "Iniciar Tutorial"
 
         # 2. Window & app controls
         if "app-controls-minimize" in target or "min-button" in target:
