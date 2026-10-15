@@ -705,7 +705,13 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
 
         # 0.2 Botão de navegação inicial / meus jogos (basic-nav-button)
         if "basic-nav-button" in class_name:
-            curr = self
+            self_desc = (getattr(self, "description", "") or "").strip().lower()
+            if any(k in (raw_name or "").lower() or k in self_desc for k in ("jogos", "games", "meus jogos")):
+                return "Meus Jogos"
+            elif any(k in (raw_name or "").lower() or k in self_desc for k in ("início", "inicio", "home", "página inicial")):
+                return "Página Inicial"
+
+            curr = getattr(self, "parent", None)
             for _ in range(5):
                 if not curr:
                     break
@@ -855,7 +861,13 @@ class RiotSmartLink(NVDAObjects.NVDAObject):
             return "Novidades e Destaques"
 
         if "basic-nav-button" in class_name:
-            curr = self
+            self_desc = (getattr(self, "description", "") or "").strip().lower()
+            if any(k in (raw_name or "").lower() or k in self_desc for k in ("jogos", "games", "meus jogos")):
+                return "Meus Jogos"
+            elif any(k in (raw_name or "").lower() or k in self_desc for k in ("início", "inicio", "home", "página inicial")):
+                return "Página Inicial"
+
+            curr = getattr(self, "parent", None)
             for _ in range(5):
                 if not curr:
                     break
@@ -870,6 +882,8 @@ class RiotSmartLink(NVDAObjects.NVDAObject):
 
         # Limpar prefixos estranhos ou "animation"
         if raw_name and raw_name.lower() not in ("animation", "lottie", "link"):
+            if any(ext in raw_name.lower() for ext in ("youtube", "trailer", "assista", "vídeo")):
+                return f"{raw_name} (Link externo de vídeo - abre no navegador)"
             return raw_name
             
         # Inspecionar filhos (muitas vezes o título da notícia está em um cabeçalho H2/H3 filho)
@@ -889,14 +903,21 @@ class RiotSmartLink(NVDAObjects.NVDAObject):
             pass
             
         if found_texts:
-            return " - ".join(found_texts)
+            text_result = " - ".join(found_texts)
+            if any(ext in text_result.lower() for ext in ("youtube", "trailer", "assista", "vídeo")):
+                return f"{text_result} (Link externo de vídeo - abre no navegador)"
+            return text_result
             
         # Tentar pegar URL / Value
-        val = getattr(self, "value", "") or ""
-        if val and ("http" in val or "/" in val):
+        val = (getattr(self, "value", "") or "").strip()
+        val_lower = val.lower()
+        if "youtube" in val_lower or "youtu.be" in val_lower:
+            return f"Vídeo do YouTube: {raw_name or 'Trailer'} (Link externo - abre no navegador)"
+        elif val and ("http" in val or "/" in val):
             slug = val.rstrip("/").split("/")[-1].replace("-", " ")
             if len(slug) > 3:
-                return f"Notícia: {slug.capitalize()}"
+                return f"Notícia: {slug.capitalize()} (Link externo - abre no navegador)"
+            return f"{raw_name or 'Notícia'} (Link externo - abre no navegador)"
                 
         return raw_name or "Link de novidade"
 
@@ -1447,35 +1468,36 @@ class AppModule(appModuleHandler.AppModule):
                     if ok:
                         return
 
-            # 3. Fallback: procurar botão CTA na tela (cta-button, Jogar, etc.)
+            # 3. Fallback: procurar botão CTA legítimo de ação do jogo (cta-button, quick-action-button)
             fg = api.getForegroundObject()
             if fg:
                 target = None
                 def find_btn(o, depth=0):
                     nonlocal target
-                    if target or depth > 10:
+                    if target or depth > 12:
                         return
-                    name = (o.name or "").lower()
+                    name = (getattr(o, "name", "") or "").lower()
                     auto_id, class_name, _ = get_element_identifiers(o)
                     elem_str = f"{name} {auto_id} {class_name}"
+                    
+                    # NUNCA acionar vídeos promocionais, banners, carrossel de marketing ou links externos!
+                    if any(bad in elem_str for bad in ("video", "trailer", "youtube", "banner", "campaign", "media", "notícia", "news", "slide", "carousel")):
+                        return
+                    
                     if o.role == ROLE_BUTTON or "button" in class_name:
-                        if any(k in elem_str for k in [
-                            "cta-button", "quick-action-button", "jogar", "iniciar",
-                            "play", "install", "update", "começar", "comecar", "aceitar"
-                        ]):
+                        if "cta-button" in elem_str or "quick-action-button" in elem_str:
                             target = o
                             return
-                    for c in o.children:
+                        if any(k in name for k in ("jogar", "iniciar league of legends", "play league of legends", "instalar", "atualizar")):
+                            target = o
+                            return
+                    for c in (getattr(o, "children", []) or []):
                         find_btn(c, depth + 1)
                 find_btn(fg)
                 
                 if target:
                     target.setFocus()
-                    try:
-                        target.doDefaultAction()
-                    except Exception:
-                        pass
-                    ui.message(f"Ação executada: {target.name or 'Jogar'}")
+                    ui.message(f"Foco no botão principal: {target.name or 'Jogar'}. Pressione Enter ou Espaço para iniciar.")
                     return
         except Exception as e:
             log.debug(f"lolAccessibility: Erro ao focar botão de ação: {e}")
@@ -1718,7 +1740,12 @@ class AppModule(appModuleHandler.AppModule):
                     c_cls = ia2.get("class", "") if (ia2 and hasattr(ia2, "items")) else ""
                     desc = (getattr(o, "description", "") or "").lower()
                     name = (getattr(o, "name", "") or "").lower()
-                    if ("basic-nav-button" in c_cls or "slide-tooltip-disclosure" in c_cls) and any(k in desc or k in name for k in ("jogos", "games", "meus jogos")):
+                    
+                    # NUNCA acionar cards, vídeos, trailers ou banners!
+                    if any(bad in c_cls or bad in desc or bad in name for bad in ("video", "trailer", "youtube", "media", "banner", "campaign", "news", "card", "notícia")):
+                        return
+
+                    if ("basic-nav-button" in c_cls or "slide-tooltip-disclosure" in c_cls) and any(k in desc or k in name for k in ("meus jogos", "games", "jogos")):
                         target = o
                         return
                     for c in (getattr(o, "children", None) or []):
@@ -1756,6 +1783,11 @@ class AppModule(appModuleHandler.AppModule):
                     c_cls = ia2.get("class", "") if (ia2 and hasattr(ia2, "items")) else ""
                     desc = (getattr(o, "description", "") or "").lower()
                     name = (getattr(o, "name", "") or "").lower()
+
+                    # NUNCA acionar cards, vídeos, trailers ou banners!
+                    if any(bad in c_cls or bad in desc or bad in name for bad in ("video", "trailer", "youtube", "media", "banner", "campaign", "news", "card", "notícia")):
+                        return
+
                     if ("basic-nav-button" in c_cls or "slide-tooltip-disclosure" in c_cls) and any(k in desc or k in name for k in ("início", "inicio", "home", "página inicial")):
                         target = o
                         return
