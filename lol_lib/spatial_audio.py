@@ -14,7 +14,10 @@ import math
 import struct
 import io
 import wave
-import winsound
+try:
+    import winsound
+except ImportError:
+    winsound = None
 import threading
 import queue
 import time
@@ -184,17 +187,18 @@ class SpatialAudioPlayer:
 
             action, args = item
             try:
-                if action == "play_wav":
-                    wav_bytes = args
-                    winsound.PlaySound(wav_bytes, winsound.SND_MEMORY)
-                elif action == "play_sequence":
-                    seq = args
-                    for wav_bytes, delay_after in seq:
-                        if not self._running:
-                            break
-                        winsound.PlaySound(wav_bytes, winsound.SND_MEMORY)
-                        if delay_after > 0:
-                            time.sleep(delay_after)
+                if winsound and hasattr(winsound, "PlaySound"):
+                    if action == "play_wav":
+                        wav_bytes = args
+                        winsound.PlaySound(wav_bytes, getattr(winsound, "SND_MEMORY", 4))
+                    elif action == "play_sequence":
+                        seq = args
+                        for wav_bytes, delay_after in seq:
+                            if not self._running:
+                                break
+                            winsound.PlaySound(wav_bytes, getattr(winsound, "SND_MEMORY", 4))
+                            if delay_after > 0:
+                                time.sleep(delay_after)
             except Exception as e:
                 log.debug(f"lolAccessibility: Erro na reprodução de áudio espacial: {e}")
             finally:
