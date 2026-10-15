@@ -1123,10 +1123,11 @@ def test_riot_client_rea_enhancements():
     assert "SIDEBAR_GAMES" in src
     assert "isinstance(reg, dict)" in src
 
-    # Scripts de atalho presentes
+    # Scripts de consulta e utilitários presentes (atalhos de foco removidos para navegação nativa via Tab/Setas)
     assert "script_announceFriends" in src
-    assert "script_focusActionButton" in src
     assert "script_acceptTerms" in src
+    assert "script_announceDownloadProgress" in src
+    assert "script_announceUserInfo" in src
     assert "launch_riot_game" in src
     assert "event_gainFocus" in src
 
@@ -1159,16 +1160,13 @@ def test_upper_menus_and_social_tabs():
     assert "Fechar configurações" in src
     assert "Menu da Conta:" in src
 
-    # 3. Validação dos atalhos de navegação rápida
-    assert "script_focusAccountMenu" in src
-    assert "script_openSettings" in src
-    assert "script_focusSocialTabs" in src
-    assert "kb:control+shift+u" in src
-    assert "kb:control+shift+p" in src
-    assert "kb:control+shift+o" in src
-    assert "Control+Shift+U: Menu da Conta" in src
-    assert "Control+Shift+P: Abrir Configurações" in src
-    assert "Control+Shift+O: Guias Sociais" in src
+    # 3. Validação de remoção de atalhos de navegação invasiva (navegação 100% nativa via Tab/Setas)
+    assert "script_focusAccountMenu" not in src
+    assert "script_openSettings" not in src
+    assert "script_focusSocialTabs" not in src
+    assert "script_focusActionButton" not in src
+    assert "script_focusGameLibrary" not in src
+    assert "script_focusHome" not in src
 
     # 4. Mock funcional para validação direta de RiotSmartTab e RiotSmartButton
     import types
