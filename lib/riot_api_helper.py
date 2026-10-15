@@ -1721,3 +1721,203 @@ def format_enemies_summary(live_data=None):
 
     return "Inimigos: " + "; ".join(items_desc) + "."
 
+
+# ============================================================================
+# CAMADA 4: ENGENHARIA REVERSA LCU - TUTORIAL, NPE E CONFIGURAÇÃO DE VÍDEO
+# ============================================================================
+
+def fix_game_window_mode(cfg_path=None):
+    """
+    Garante que o League of Legends execute no modo 'Janela Sem Bordas' (WindowMode=2).
+    No modo tela cheia exclusivo (WindowMode=0), o DirectX impede que o NVDA receba eventos de teclado,
+    deixando o leitor de telas mudo na partida 3D.
+    """
+    if not cfg_path:
+        candidates = [
+            r"C:\Riot Games\League of Legends\Config\game.cfg",
+            r"D:\Riot Games\League of Legends\Config\game.cfg",
+        ]
+        for c in candidates:
+            if os.path.isfile(c):
+                cfg_path = c
+                break
+
+    if not cfg_path or not os.path.isfile(cfg_path):
+        return False, "Arquivo game.cfg não encontrado."
+
+    try:
+        with open(cfg_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+
+        modified = False
+        new_lines = []
+        has_window_mode = False
+
+        for l in lines:
+            if l.strip().startswith("WindowMode="):
+                has_window_mode = True
+                val = l.strip().split("=")[1]
+                if val != "2":
+                    new_lines.append("WindowMode=2\n")
+                    modified = True
+                else:
+                    new_lines.append(l)
+            else:
+                new_lines.append(l)
+
+        if not has_window_mode:
+            idx = -1
+            for i, l in enumerate(new_lines):
+                if l.strip() == "[General]":
+                    idx = i
+                    break
+            if idx >= 0:
+                new_lines.insert(idx + 1, "WindowMode=2\n")
+                modified = True
+
+        if modified:
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                f.writelines(new_lines)
+            return True, "Configuração atualizada: Modo Janela Sem Bordas (WindowMode=2) ativado!"
+        return True, "Modo Janela Sem Bordas (WindowMode=2) já está ativo."
+    except Exception as e:
+        return False, f"Erro ao atualizar game.cfg: {e}"
+
+
+def get_lcu_npe_status():
+    """
+    Consulta o progresso da Jornada de Iniciante e Tutorial através da LCU.
+    Endpoint: /lol-npe-tutorial-path/v1/tutorials
+    """
+    data = request_api("/lol-npe-tutorial-path/v1/tutorials")
+    if not data or not isinstance(data, list):
+        pref = request_api("/lol-settings/v2/account/LCUPreferences/lol-npe-tutorial-path")
+        if pref and isinstance(pref, dict):
+            pdata = pref.get("data", {})
+            return {
+                "has_tutorials": True,
+                "has_skipped": pdata.get("hasSkippedTutorialPath", False),
+                "summary": "Jornada de Iniciante disponível na conta."
+            }
+        return None
+
+    tutorials = []
+    for t in data:
+        t_id = t.get("id") or t.get("stepNumber")
+        name = t.get("name") or f"Tutorial {t_id}"
+        status = t.get("status") or "LOCKED"
+        desc = t.get("description") or ""
+        is_completed = (status == "COMPLETED")
+        tutorials.append({
+            "id": t_id,
+            "name": name,
+            "status": status,
+            "completed": is_completed,
+            "description": desc
+        })
+
+    completed_count = sum(1 for x in tutorials if x["completed"])
+    summary = f"Tutoriais: {completed_count} de {len(tutorials)} concluídos."
+    return {
+        "has_tutorials": True,
+        "completed_count": completed_count,
+        "total_count": len(tutorials),
+        "tutorials": tutorials,
+        "summary": summary
+    }
+
+
+def start_lcu_tutorial_mission(mission_index=1):
+    """
+    Inicia diretamente a partida do tutorial especificado via LCU API.
+    Missão 1: Bem-vindo (Queue 2000)
+    Missão 2: Fortalecimento (Queue 2010)
+    Missão 3: Equipamentos (Queue 2020)
+    """
+    queue_map = {1: 2000, 2: 2010, 3: 2020}
+    q_id = queue_map.get(mission_index, 2000)
+
+    # 1. Tentar iniciar via endpoint de tutorial básico
+    ok = request_api("/lol-gameflow/v1/basic-tutorial/start", method="POST")
+    if ok:
+        return True, f"Iniciando Tutorial {mission_index} do League of Legends!"
+
+    # 2. Tentar criar o saguão da fila de tutorial correspondente
+    if create_lcu_lobby(q_id):
+        time.sleep(0.5)
+        if start_lcu_matchmaking():
+            return True, f"Buscando partida do Tutorial {mission_index}!"
+        return True, f"Saguão do Tutorial {mission_index} criado com sucesso!"
+
+    return False, "Não foi possível iniciar o tutorial via LCU. Verifique se o cliente está conectado."
+
+
+def claim_lcu_npe_rewards():
+    """
+    Resgata automaticamente cápsulas e recompensas pendentes da Jornada de Iniciante e Login diário.
+    """
+    claimed = 0
+
+    # 1. Level rewards
+    try:
+        lvl = request_api("/lol-npe-rewards/v1/level-rewards/state")
+        if lvl and isinstance(lvl, dict):
+            for reward in lvl.get("rewards", []):
+                if reward.get("rewardState") == "AVAILABLE":
+                    r_id = reward.get("id")
+                    if r_id:
+                        res = request_api(f"/lol-npe-rewards/v1/level-rewards/{r_id}/claim", method="POST")
+                        if res:
+                            claimed += 1
+    except Exception:
+        pass
+
+    # 2. Login rewards
+    try:
+        login = request_api("/lol-npe-rewards/v1/login-rewards/state")
+        if login and isinstance(login, dict):
+            for day in login.get("days", []):
+                if day.get("rewardState") == "AVAILABLE":
+                    d_id = day.get("dayNumber")
+                    res = request_api(f"/lol-npe-rewards/v1/login-rewards/{d_id}/claim", method="POST")
+                    if res:
+                        claimed += 1
+    except Exception:
+        pass
+
+    # 3. Dismiss notifications
+    d = dismiss_lcu_notifications()
+    total = claimed + d
+
+    if total > 0:
+        return True, f"{total} recompensa(s) e aviso(s) resgatados com sucesso!"
+    return False, "Nenhuma recompensa pendente para resgatar no momento."
+
+
+def check_vanguard_status():
+    """
+    Verifica a saúde do serviço do Riot Vanguard (vgc).
+    Retorna dicionário com o status e diagnóstico.
+    """
+    import subprocess
+    try:
+        res = subprocess.run(["sc.exe", "qc", "vgc"], capture_output=True, text=True, timeout=3)
+        out = res.stdout or ""
+        if "DISABLED" in out.upper():
+            return {
+                "ok": False,
+                "status": "DISABLED",
+                "message": "Atenção: O serviço do Vanguard (vgc) está DESATIVADO! Isso causará o erro VAN 293. Execute reparar_vanguard.bat como Administrador."
+            }
+        elif "DEMAND" in out.upper() or "AUTO" in out.upper():
+            q = subprocess.run(["sc.exe", "query", "vgc"], capture_output=True, text=True, timeout=3)
+            q_out = (q.stdout or "").upper()
+            if "RUNNING" in q_out:
+                return {"ok": True, "status": "RUNNING", "message": "Riot Vanguard (vgc) ativo e funcionando normalmente."}
+            else:
+                return {"ok": True, "status": "STOPPED", "message": "Riot Vanguard configurado para início sob demanda (iniciará com o jogo)."}
+    except Exception as e:
+        return {"ok": False, "status": "UNKNOWN", "message": f"Não foi possível verificar status do Vanguard: {e}"}
+
+    return {"ok": True, "status": "OK", "message": "Status do Vanguard verificado."}
+

@@ -82,12 +82,16 @@ class AppModule(leagueclient.AppModule):
 
     @script(
         description="Consulta a Vida e Recursos atuais do jogador na partida (tecla H).",
-        gestures=["kb:h", "kb:control+shift+h"]
+        gestures=["kb:h", "kb:alt+h", "kb:control+shift+h"]
     )
     def script_queryHealth(self, gesture):
         player = get_live_active_player()
         if not player:
-            gesture.send()
+            try:
+                tones.beep(440, 60)
+            except Exception:
+                pass
+            ui.message("Partida conectando... Aguarde o carregamento dos dados da partida.")
             return
         stats = player.get("championStats") or player.get("champion_stats") or {}
         hp = int(stats.get("currentHealth") or stats.get("current_health") or 0)
@@ -102,12 +106,16 @@ class AppModule(leagueclient.AppModule):
 
     @script(
         description="Consulta o Placar e KDA do jogador na partida (tecla K).",
-        gestures=["kb:k", "kb:control+shift+k"]
+        gestures=["kb:k", "kb:alt+k", "kb:control+shift+k"]
     )
     def script_queryKDA(self, gesture):
         player = get_live_active_player()
         if not player:
-            gesture.send()
+            try:
+                tones.beep(440, 60)
+            except Exception:
+                pass
+            ui.message("Placar conectando... Aguarde o início da partida.")
             return
         scores = player.get("scores") or {}
         k = scores.get("kills", 0)
@@ -118,12 +126,16 @@ class AppModule(leagueclient.AppModule):
 
     @script(
         description="Consulta os Itens comprados e Ouro atual (tecla I).",
-        gestures=["kb:i", "kb:control+shift+i"]
+        gestures=["kb:i", "kb:alt+i", "kb:control+shift+i"]
     )
     def script_queryItems(self, gesture):
         player = get_live_active_player()
         if not player:
-            gesture.send()
+            try:
+                tones.beep(440, 60)
+            except Exception:
+                pass
+            ui.message("Itens conectando... Aguarde o início da partida.")
             return
         gold = int(player.get("currentGold") or player.get("current_gold") or 0)
         items = player.get("items", [])
@@ -133,7 +145,7 @@ class AppModule(leagueclient.AppModule):
 
     @script(
         description="Consulta o status, nível e tempo de recarga de todas as habilidades (tecla U).",
-        gestures=["kb:u", "kb:control+shift+u"]
+        gestures=["kb:u", "kb:alt+u", "kb:control+shift+u"]
     )
     def script_queryAbilities(self, gesture):
         combat = getattr(self, "_combat_status", None)
@@ -145,6 +157,13 @@ class AppModule(leagueclient.AppModule):
         lvl = player.get("level", 1) if player else 1
         champ = player.get("championName") or player.get("champion_name") or "Campeão" if player else "Campeão"
         if not abilities:
+            if not player:
+                try:
+                    tones.beep(440, 60)
+                except Exception:
+                    pass
+                ui.message("Habilidades conectando... Aguarde o início da partida.")
+                return
             ui.message(f"{champ}, Nível {lvl}.")
             return
         details = []
@@ -156,13 +175,17 @@ class AppModule(leagueclient.AppModule):
 
     @script(
         description="Anuncia quais inimigos estão vivos ou mortos (tecla O).",
-        gestures=["kb:o", "kb:control+shift+o"]
+        gestures=["kb:o", "kb:alt+o"]
     )
     def script_queryEnemies(self, gesture):
         players = get_live_player_list()
         active = get_live_active_player()
         if not players or not active:
-            gesture.send()
+            try:
+                tones.beep(440, 60)
+            except Exception:
+                pass
+            ui.message("Inimigos conectando... Aguarde o início da partida.")
             return
         my_team = active.get("team", "ORDER")
         enemies = [p for p in players if p.get("team") != my_team]
@@ -175,12 +198,16 @@ class AppModule(leagueclient.AppModule):
 
     @script(
         description="Consulta o Tempo de Jogo da partida (tecla T).",
-        gestures=["kb:t", "kb:control+shift+t"]
+        gestures=["kb:t", "kb:alt+t", "kb:control+shift+t"]
     )
     def script_queryGameTime(self, gesture):
         stats = get_live_game_stats()
         if not stats:
-            ui.message("Tempo de jogo indisponível no momento.")
+            try:
+                tones.beep(440, 60)
+            except Exception:
+                pass
+            ui.message("Tempo de jogo conectando... Aguarde o início da partida.")
             return
         t = int(stats.get("gameTime") or stats.get("game_time") or 0)
         m = t // 60

@@ -70,7 +70,12 @@ try:
         format_scoreboard_summary,
         format_champion_stats_summary,
         format_objectives_summary,
-        format_enemies_summary
+        format_enemies_summary,
+        get_lcu_npe_status,
+        start_lcu_tutorial_mission,
+        claim_lcu_npe_rewards,
+        fix_game_window_mode,
+        check_vanguard_status
     )
 except Exception:
     try:
@@ -110,7 +115,12 @@ except Exception:
             format_scoreboard_summary,
             format_champion_stats_summary,
             format_objectives_summary,
-            format_enemies_summary
+            format_enemies_summary,
+            get_lcu_npe_status,
+            start_lcu_tutorial_mission,
+            claim_lcu_npe_rewards,
+            fix_game_window_mode,
+            check_vanguard_status
         )
     except Exception:
         try:
@@ -150,7 +160,12 @@ except Exception:
                 format_scoreboard_summary,
                 format_champion_stats_summary,
                 format_objectives_summary,
-                format_enemies_summary
+                format_enemies_summary,
+                get_lcu_npe_status,
+                start_lcu_tutorial_mission,
+                claim_lcu_npe_rewards,
+                fix_game_window_mode,
+                check_vanguard_status
             )
         except Exception as e:
             log.error(f"lolAccessibility: Falha ao importar riot_api_helper em leagueclient: {e}")
@@ -190,6 +205,11 @@ except Exception:
             format_champion_stats_summary = lambda l=None: "Stats indisponíveis"
             format_objectives_summary = lambda l=None: "Objetivos indisponíveis"
             format_enemies_summary = lambda l=None: "Inimigos indisponíveis"
+            get_lcu_npe_status = lambda: None
+            start_lcu_tutorial_mission = lambda m=1: (False, "Módulo indisponível")
+            claim_lcu_npe_rewards = lambda: (False, "Módulo indisponível")
+            fix_game_window_mode = lambda p=None: (False, "Módulo indisponível")
+            check_vanguard_status = lambda: {"ok": False, "status": "UNKNOWN", "message": "Indisponível"}
 
 try:
     from lol_lib.chat_reader import LoLChatReader
@@ -592,6 +612,141 @@ def prompt_navigation_dialog(callback, team="ORDER"):
     wx.CallAfter(_run)
     return True
 
+
+def prompt_lol_hub_dialog(callback=None):
+    """
+    Exibe a Central de Acessibilidade do League of Legends (Hub Acessível).
+    Permite iniciar tutoriais, criar saguões, resgatar recompensas, verificar Vanguard e configurar vídeo.
+    """
+    if not wx:
+        if callback:
+            callback(None)
+        return False
+
+    def _run():
+        options = [
+            ("TUTORIAL_1", "1. Iniciar Tutorial 1: Bem-vindo(a) ao League of Legends"),
+            ("TUTORIAL_2", "2. Iniciar Tutorial 2: Fortalecimento do Campeão"),
+            ("TUTORIAL_3", "3. Iniciar Tutorial 3: Comprando Equipamentos"),
+            ("REWARDS", "4. Resgatar Recompensas e Cápsulas Pendentes"),
+            ("SWIFTPLAY", "5. Criar Saguão: Partida Rápida (Swiftplay / Normal)"),
+            ("ARAM", "6. Criar Saguão: ARAM (Howling Abyss)"),
+            ("BOTS", "7. Criar Saguão: Cooperativo vs IA (Contra Bots)"),
+            ("PRACTICE", "8. Criar Saguão: Ferramenta de Treino / Prática"),
+            ("WINDOW_MODE", "9. Otimizar Vídeo: Ativar Janela Sem Bordas (Borderless)"),
+            ("VANGUARD", "10. Diagnóstico do Anti-Cheat Riot Vanguard"),
+            ("TOS", "11. Aceitar Termos de Serviço (ToS) / Contrato"),
+        ]
+        choices = [label for key, label in options]
+        keys = [key for key, label in options]
+
+        style = wx.OK | wx.CANCEL | wx.CENTRE | wx.STAY_ON_TOP
+        dlg = wx.SingleChoiceDialog(
+            None,
+            "Selecione uma ação rápida para o League of Legends:",
+            "Central de Acessibilidade - League of Legends",
+            choices,
+            style=style
+        )
+        try:
+            dlg.Raise()
+            dlg.SetFocus()
+        except Exception:
+            pass
+
+        try:
+            tones.beep(880, 80)
+            tones.beep(1175, 100)
+        except Exception:
+            pass
+
+        if dlg.ShowModal() == wx.ID_OK:
+            sel_idx = dlg.GetSelection()
+            dlg.Destroy()
+            if 0 <= sel_idx < len(keys):
+                action_key = keys[sel_idx]
+                _execute_lol_hub_action(action_key)
+                if callback:
+                    callback(action_key)
+        else:
+            dlg.Destroy()
+            if callback:
+                callback(None)
+
+    wx.CallAfter(_run)
+    return True
+
+
+def _execute_lol_hub_action(action_key):
+    """Executa a ação selecionada na Central de Acessibilidade."""
+    if action_key == "TUTORIAL_1":
+        ok, msg = start_lcu_tutorial_mission(1)
+        if ok:
+            tones.beep(1100, 120)
+        ui.message(msg)
+    elif action_key == "TUTORIAL_2":
+        ok, msg = start_lcu_tutorial_mission(2)
+        if ok:
+            tones.beep(1100, 120)
+        ui.message(msg)
+    elif action_key == "TUTORIAL_3":
+        ok, msg = start_lcu_tutorial_mission(3)
+        if ok:
+            tones.beep(1100, 120)
+        ui.message(msg)
+    elif action_key == "REWARDS":
+        ok, msg = claim_lcu_npe_rewards()
+        if ok:
+            tones.beep(1320, 150)
+        ui.message(msg)
+    elif action_key == "SWIFTPLAY":
+        ok = create_lcu_lobby(880) or create_lcu_lobby(430)
+        if ok:
+            tones.beep(1046, 100)
+            ui.message("Saguão de Partida Rápida criado com sucesso!")
+        else:
+            ui.message("Não foi possível criar o saguão de Partida Rápida.")
+    elif action_key == "ARAM":
+        ok = create_lcu_lobby(450)
+        if ok:
+            tones.beep(1046, 100)
+            ui.message("Saguão de ARAM criado com sucesso!")
+        else:
+            ui.message("Não foi possível criar o saguão de ARAM.")
+    elif action_key == "BOTS":
+        ok = create_lcu_lobby(870) or create_lcu_lobby(880)
+        if ok:
+            tones.beep(1046, 100)
+            ui.message("Saguão Cooperativo vs IA criado com sucesso!")
+        else:
+            ui.message("Não foi possível criar o saguão contra bots.")
+    elif action_key == "PRACTICE":
+        ok = create_lcu_lobby(0) or create_lcu_lobby(2000)
+        if ok:
+            tones.beep(1046, 100)
+            ui.message("Saguão de Treino criado com sucesso!")
+        else:
+            ui.message("Não foi possível criar o saguão de treino.")
+    elif action_key == "WINDOW_MODE":
+        ok, msg = fix_game_window_mode()
+        if ok:
+            tones.beep(1175, 120)
+        ui.message(msg)
+    elif action_key == "VANGUARD":
+        diag = check_vanguard_status()
+        if diag.get("ok"):
+            tones.beep(1046, 100)
+        else:
+            tones.beep(330, 200)
+        ui.message(diag.get("message", "Diagnóstico concluído."))
+    elif action_key == "TOS":
+        if scroll_and_accept_async:
+            def _cb(ok, msg):
+                ui.message(msg)
+            scroll_and_accept_async(callback=_cb)
+        else:
+            d = dismiss_lcu_notifications()
+            ui.message(f"Avisos confirmados: {d}")
 
 
 try:
@@ -1297,8 +1452,32 @@ class AppModule(appModuleHandler.AppModule):
         except Exception as e:
             log.debug(f"lolAccessibility: Erro em focusActionButton: {e}")
 
-        # 6. Se estiver no Hub (phase None) e nenhum botão foi focado, abre saguão padrão (Swiftplay Iniciante / ARAM / Tutoriais)
+        # 6. Se estiver no Hub (phase None):
         if phase is None:
+            # Resgata recompensas pendentes se houver
+            try:
+                claim_lcu_npe_rewards()
+            except Exception:
+                pass
+
+            # Se houver tutoriais da Jornada de Iniciante pendentes, inicia diretamente o próximo
+            try:
+                npe = get_lcu_npe_status()
+                if npe and npe.get("has_tutorials"):
+                    target_t = 1
+                    for t in npe.get("tutorials", []):
+                        if not t.get("completed"):
+                            target_t = t.get("id") or 1
+                            break
+                    ok, msg = start_lcu_tutorial_mission(target_t)
+                    if ok:
+                        tones.beep(1100, 150)
+                        ui.message(msg)
+                        return
+            except Exception as e:
+                log.debug(f"lolAccessibility: Erro ao iniciar tutorial: {e}")
+
+            # Tenta abrir saguão de iniciante (880), ARAM (450) ou tutoriais
             for q_id in [880, 450, 2000, 2010, 2020]:
                 ok = create_lcu_lobby(q_id)
                 if ok:
@@ -1307,6 +1486,15 @@ class AppModule(appModuleHandler.AppModule):
                     return
 
         ui.message("Nenhuma ação principal pendente no momento.")
+
+    @script(
+        description="Abre a Central de Acessibilidade do League of Legends com opções rápidas de saguão, tutorial e configuração.",
+        gestures=["kb:NVDA+shift+a", "kb:control+shift+a"]
+    )
+    def script_openLoLHub(self, gesture):
+        opened = prompt_lol_hub_dialog()
+        if not opened:
+            ui.message("Central de Acessibilidade não disponível.")
 
     @script(
         description="Dispensa e aceita todos os avisos, termos e caixas de diálogo do League of Legends.",

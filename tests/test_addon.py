@@ -1016,6 +1016,67 @@ def test_tos_helper():
     print("OK: Assistente de Termos de Serviço (ToS) 100% validado.")
 
 
+def test_lcu_reverse_engineering_and_vanguard():
+    """Testa as funções de engenharia reversa LCU, Vanguard e modo de janela."""
+    print("Testando engenharia reversa LCU, modo de janela e Vanguard...")
+    from lol_lib.riot_api_helper import (
+        fix_game_window_mode,
+        get_lcu_npe_status,
+        start_lcu_tutorial_mission,
+        claim_lcu_npe_rewards,
+        check_vanguard_status
+    )
+    import tempfile
+
+    # 1. Teste de fix_game_window_mode em arquivo temporário
+    with tempfile.NamedTemporaryFile("w", delete=False, suffix=".cfg") as tmp:
+        tmp.write("[General]\nHeight=1080\nWidth=1920\nWindowMode=0\n")
+        tmp_path = tmp.name
+
+    try:
+        ok, msg = fix_game_window_mode(tmp_path)
+        assert ok, f"Falha ao corrigir WindowMode: {msg}"
+        with open(tmp_path, "r") as f:
+            content = f.read()
+        assert "WindowMode=2" in content, "WindowMode não foi atualizado para 2!"
+        print("  Modo de janela (WindowMode=2) validado com sucesso.")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    # 2. Teste de check_vanguard_status
+    v_status = check_vanguard_status()
+    assert isinstance(v_status, dict)
+    assert "ok" in v_status
+    assert "status" in v_status
+    assert "message" in v_status
+    print(f"  Diagnóstico do Vanguard verificado: Status={v_status['status']}.")
+
+    # 3. Teste de scripts e hub nos módulos
+    for mod_path in [
+        os.path.join(ROOT_DIR, "appModules", "leagueclient.py"),
+        os.path.join(ROOT_DIR, "globalPlugins", "lol_accessibility_bridge.py")
+    ]:
+        with open(mod_path, "r", encoding="utf-8") as f:
+            src = f.read()
+        assert "script_openLoLHub" in src, f"script_openLoLHub ausente em {mod_path}!"
+        assert "start_lcu_tutorial_mission" in src, f"start_lcu_tutorial_mission ausente em {mod_path}!"
+
+    # 4. Teste de fallback sonoro/fala in-game em leagueoflegends.py
+    lol_py = os.path.join(ROOT_DIR, "appModules", "leagueoflegends.py")
+    with open(lol_py, "r", encoding="utf-8") as f:
+        lol_src = f.read()
+    assert "Partida conectando... Aguarde o carregamento dos dados da partida." in lol_src
+    assert "kb:alt+h" in lol_src
+    assert "kb:alt+k" in lol_src
+    assert "kb:alt+i" in lol_src
+    assert "kb:alt+u" in lol_src
+    assert "kb:alt+o" in lol_src
+    assert "kb:alt+t" in lol_src
+
+    print("OK: Engenharia reversa LCU, modo de janela e Vanguard 100% validados.")
+
+
 if __name__ == "__main__":
     test_syntax()
     test_manifest()
@@ -1036,6 +1097,7 @@ if __name__ == "__main__":
     test_gesture_focus_filtering()
     test_no_keyboard_interference()
     test_tos_helper()
+    test_lcu_reverse_engineering_and_vanguard()
     print("\nTodos os testes unitários passaram com 100% de sucesso!")
 
 

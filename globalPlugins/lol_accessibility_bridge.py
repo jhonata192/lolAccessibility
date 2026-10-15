@@ -81,7 +81,12 @@ try:
         format_scoreboard_summary,
         format_champion_stats_summary,
         format_objectives_summary,
-        format_enemies_summary
+        format_enemies_summary,
+        get_lcu_npe_status,
+        start_lcu_tutorial_mission,
+        claim_lcu_npe_rewards,
+        fix_game_window_mode,
+        check_vanguard_status
     )
 except Exception:
     try:
@@ -125,7 +130,12 @@ except Exception:
             format_scoreboard_summary,
             format_champion_stats_summary,
             format_objectives_summary,
-            format_enemies_summary
+            format_enemies_summary,
+            get_lcu_npe_status,
+            start_lcu_tutorial_mission,
+            claim_lcu_npe_rewards,
+            fix_game_window_mode,
+            check_vanguard_status
         )
     except Exception:
         try:
@@ -169,7 +179,12 @@ except Exception:
                 format_scoreboard_summary,
                 format_champion_stats_summary,
                 format_objectives_summary,
-                format_enemies_summary
+                format_enemies_summary,
+                get_lcu_npe_status,
+                start_lcu_tutorial_mission,
+                claim_lcu_npe_rewards,
+                fix_game_window_mode,
+                check_vanguard_status
             )
         except Exception as e:
             log.error(f"lolAccessibility: Falha ao importar riot_api_helper: {e}")
@@ -213,6 +228,11 @@ except Exception:
             format_champion_stats_summary = lambda l=None: "Stats indisponíveis"
             format_objectives_summary = lambda l=None: "Objetivos indisponíveis"
             format_enemies_summary = lambda l=None: "Inimigos indisponíveis"
+            get_lcu_npe_status = lambda: None
+            start_lcu_tutorial_mission = lambda m=1: (False, "Módulo indisponível")
+            claim_lcu_npe_rewards = lambda: (False, "Módulo indisponível")
+            fix_game_window_mode = lambda p=None: (False, "Módulo indisponível")
+            check_vanguard_status = lambda: {"ok": False, "status": "UNKNOWN", "message": "Indisponível"}
 
 try:
     from lol_lib.chat_reader import (
@@ -1350,6 +1370,29 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     return
 
         if lcu_lock and get_lcu_gameflow_phase() is None:
+            # Resgata recompensas pendentes se houver
+            try:
+                claim_lcu_npe_rewards()
+            except Exception:
+                pass
+
+            # Se houver tutoriais da Jornada de Iniciante pendentes, inicia diretamente o próximo
+            try:
+                npe = get_lcu_npe_status()
+                if npe and npe.get("has_tutorials"):
+                    target_t = 1
+                    for t in npe.get("tutorials", []):
+                        if not t.get("completed"):
+                            target_t = t.get("id") or 1
+                            break
+                    ok, msg = start_lcu_tutorial_mission(target_t)
+                    if ok:
+                        tones.beep(1100, 150)
+                        ui.message(msg)
+                        return
+            except Exception as e:
+                log.debug(f"lolAccessibility: Erro ao iniciar tutorial no plugin global: {e}")
+
             # Tenta fila de iniciante (880), ARAM (450) ou tutoriais (2000, 2010, 2020)
             for q_id in [880, 450, 2000, 2010, 2020]:
                 ok = create_lcu_lobby(q_id)
@@ -1359,6 +1402,24 @@ class GlobalPlugin(globalPluginHandler.GlobalPlugin):
                     return
 
         ui.message("Nenhum botão de ação principal localizado na tela atual.")
+
+    @script(
+        description="Abre a Central de Acessibilidade do League of Legends com opções rápidas de saguão, tutorial e configuração.",
+        gestures=["kb:NVDA+shift+a", "kb:control+shift+a"]
+    )
+    def script_openLoLHub(self, gesture):
+        if not self._should_handle_launcher_gesture(gesture):
+            gesture.send()
+            return
+        try:
+            import appModules.leagueclient as lc
+            if hasattr(lc, "prompt_lol_hub_dialog"):
+                opened = lc.prompt_lol_hub_dialog()
+                if opened:
+                    return
+        except Exception as e:
+            log.debug(f"lolAccessibility: Erro ao abrir Central de Acessibilidade: {e}")
+        ui.message("Central de Acessibilidade não disponível.")
 
     @script(
         description="Rola o container de Termos de Serviço (ToS) e clica em Aceitar no Riot Client ou League of Legends.",
