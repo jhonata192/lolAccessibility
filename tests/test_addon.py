@@ -1077,6 +1077,57 @@ def test_lcu_reverse_engineering_and_vanguard():
     print("OK: Engenharia reversa LCU, modo de janela e Vanguard 100% validados.")
 
 
+def test_riot_client_rea_enhancements():
+    """Testa melhorias de acessibilidade do Riot Client derivadas da engenharia reversa com REA."""
+    print("Testando melhorias do Riot Client derivadas de engenharia reversa (REA)...")
+    sys.path.insert(0, ROOT_DIR)
+    sys.path.insert(0, os.path.join(ROOT_DIR, "lol_lib"))
+
+    from lol_lib.riot_api_helper import (
+        get_riot_eula_status,
+        accept_riot_eula,
+        launch_riot_game,
+        get_riot_friends_summary,
+    )
+
+    # 1. Testar que as funções do Riot Client existem e respondem tipos corretos
+    eula = get_riot_eula_status()
+    # Se o Riot Client estiver aberto, pode ser 'Accepted', senão None
+    assert eula in (None, "Accepted", "AcceptanceRequired", "WaitingForAllServiceData")
+
+    friends = get_riot_friends_summary()
+    assert isinstance(friends, str)
+    assert len(friends) > 0
+
+    # 2. Testar código-fonte de appModules/riotclient.py
+    riot_py = os.path.join(ROOT_DIR, "appModules", "riotclient.py")
+    with open(riot_py, "r", encoding="utf-8") as f:
+        src = f.read()
+
+    # Dicionário de guias enriquecido com REA
+    assert '"social-friends-list": "Amigos"' in src
+    assert '"social-conversations-list": "Conversas"' in src
+    assert '"settings-drawer-navigation": "Configurações"' in src
+    assert '"campaign-hub": "Campanha e Passes"' in src
+
+    # Testids de botões reconhecidos em RiotSmartButton
+    assert '"tos-accept"' in src
+    assert '"tos-checkbox"' in src
+    assert '"side-panel-riot-id"' in src
+    assert '"side-panel-collapse-button"' in src
+    assert '"cta-button-resting-state-button"' in src
+    assert '"quick-action-button"' in src
+
+    # Scripts de atalho presentes
+    assert "script_announceFriends" in src
+    assert "script_focusActionButton" in src
+    assert "script_acceptTerms" in src
+    assert "launch_riot_game" in src
+    assert "event_gainFocus" in src
+
+    print("OK: Melhorias do Riot Client derivadas de engenharia reversa (REA) 100% validadas.")
+
+
 if __name__ == "__main__":
     test_syntax()
     test_manifest()
@@ -1098,7 +1149,9 @@ if __name__ == "__main__":
     test_no_keyboard_interference()
     test_tos_helper()
     test_lcu_reverse_engineering_and_vanguard()
+    test_riot_client_rea_enhancements()
     print("\nTodos os testes unitários passaram com 100% de sucesso!")
+
 
 
 

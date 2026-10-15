@@ -1921,3 +1921,105 @@ def check_vanguard_status():
 
     return {"ok": True, "status": "OK", "message": "Status do Vanguard verificado."}
 
+
+# ============================================================================
+# CAMADA RIOT CLIENT: EULA, LAUNCHER E AMIGOS (DESCOBERTOS VIA ENGENHARIA REVERSA REA)
+# ============================================================================
+
+def get_riot_eula_status():
+    """
+    Verifica se há Termos de Serviço (EULA) pendentes de aceitação no Riot Client.
+    Retorna: 'Accepted', 'AcceptanceRequired', 'WaitingForAllServiceData' ou None.
+    """
+    lock = get_riot_client_lockfile()
+    if not lock:
+        return None
+    data = request_api(lock, "/eula/v1/agreement/acceptance")
+    if isinstance(data, str):
+        return data.strip().strip('"')
+    return None
+
+
+def accept_riot_eula():
+    """
+    Aceita os Termos de Serviço mais recentes via API REST do Riot Client.
+    Retorna (sucesso: bool, mensagem: str).
+    """
+    lock = get_riot_client_lockfile()
+    if not lock:
+        return False, "Riot Client não detectado ou lockfile inacessível."
+
+    # PUT /eula/v1/agreement/acceptance aceita os termos e retorna 204
+    res = request_api(lock, "/eula/v1/agreement/acceptance", method="PUT", body={})
+    if res is not None:
+        return True, "Termos de Serviço aceitos com sucesso via API da Riot!"
+    return False, "Falha ao aceitar Termos de Serviço via API da Riot."
+
+
+def launch_riot_game(product="league_of_legends", patchline="live"):
+    """
+    Inicia o League of Legends (ou outro produto Riot) diretamente pelo Riot Client.
+    1. Tenta acionar o endpoint nativo descoberto no renderer:
+       POST /product-launcher/v1/products/{product}/patchlines/{patchline}
+    2. Fallback: executa RiotClientServices.exe com parâmetros oficiais de inicialização.
+    """
+    lock = get_riot_client_lockfile()
+    if lock:
+        ep = f"/product-launcher/v1/products/{product}/patchlines/{patchline}"
+        res = request_api(lock, ep, method="POST", body={})
+        if res is not None:
+            return True, f"Iniciando {product} pelo Riot Client..."
+
+    # Fallback via processo RiotClientServices.exe
+    import subprocess
+    candidates = [
+        os.path.join(os.environ.get("PROGRAMFILES", "C:\\Program Files"), "Riot Games", "Riot Client", "RiotClientServices.exe"),
+        "C:\\Riot Games\\Riot Client\\RiotClientServices.exe",
+        "D:\\Riot Games\\Riot Client\\RiotClientServices.exe",
+    ]
+    exe_path = next((c for c in candidates if os.path.isfile(c)), None)
+    if exe_path:
+        try:
+            cmd = [exe_path, f"--launch-product={product}", f"--launch-patchline={patchline}"]
+            subprocess.Popen(cmd)
+            return True, f"Comando de inicialização enviado para {product}."
+        except Exception as e:
+            return False, f"Erro ao iniciar {product} via executável: {e}"
+
+    return False, "Não foi possível localizar o inicializador do jogo."
+
+
+def get_riot_friends_summary():
+    """
+    Consulta a lista de amigos e presenças no Riot Client.
+    Retorna lista formatada com nomes, status e jogos em execução.
+    """
+    lock = get_riot_client_lockfile()
+    if not lock:
+        return "Riot Client não conectado."
+
+    data = request_api(lock, "/social/v4/friends")
+    if not data or not isinstance(data, dict):
+        return "Nenhum dado de amigos disponível no momento."
+
+    friends = data.get("friends", [])
+    if not friends:
+        return "Nenhum amigo online no momento."
+
+    online = []
+    for f in friends:
+        name = f.get("gameName") or f.get("name") or "Amigo"
+        tag = f.get("gameTag") or ""
+        full = f"{name}#{tag}" if tag else name
+        product = f.get("productName") or ""
+        status = f.get("availability") or "offline"
+        if status != "offline":
+            game_desc = f" jogando {product}" if product else ""
+            online.append(f"{full} ({status}{game_desc})")
+
+    if not online:
+        return f"{len(friends)} amigos na lista, todos offline."
+
+    return f"{len(online)} amigo(s) online: " + ", ".join(online)
+
+

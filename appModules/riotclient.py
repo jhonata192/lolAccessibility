@@ -30,17 +30,42 @@ if _lol_lib_dir not in sys.path:
     sys.path.insert(0, _lol_lib_dir)
 
 try:
-    from lol_lib.riot_api_helper import get_riot_user_info, get_riot_install_status
+    from lol_lib.riot_api_helper import (
+        get_riot_user_info,
+        get_riot_install_status,
+        get_riot_eula_status,
+        accept_riot_eula,
+        launch_riot_game,
+        get_riot_friends_summary,
+    )
 except Exception:
     try:
-        from riot_api_helper import get_riot_user_info, get_riot_install_status
+        from riot_api_helper import (
+            get_riot_user_info,
+            get_riot_install_status,
+            get_riot_eula_status,
+            accept_riot_eula,
+            launch_riot_game,
+            get_riot_friends_summary,
+        )
     except Exception:
         try:
-            from lib.riot_api_helper import get_riot_user_info, get_riot_install_status
+            from lib.riot_api_helper import (
+                get_riot_user_info,
+                get_riot_install_status,
+                get_riot_eula_status,
+                accept_riot_eula,
+                launch_riot_game,
+                get_riot_friends_summary,
+            )
         except Exception as e:
             log.error(f"lolAccessibility: Falha ao importar riot_api_helper em riotclient: {e}")
             get_riot_user_info = lambda: None
             get_riot_install_status = lambda: None
+            get_riot_eula_status = lambda: None
+            accept_riot_eula = lambda: (False, "API indisponível")
+            launch_riot_game = lambda *a, **kw: (False, "API indisponível")
+            get_riot_friends_summary = lambda: "API indisponível"
 
 try:
     from lol_lib.text_cleaner import shared_cleaner
@@ -170,6 +195,14 @@ KNOWN_TAB_NAMES = {
     "bacon": "VALORANT",
     "lor": "Legends of Runeterra",
     "2xko": "2XKO",
+    "wildrift": "Wild Rift",
+    "game-bar": "Barra de Jogos",
+    "campaign-hub": "Campanha e Passes",
+    "side-panel": "Menu Lateral",
+    "social-friends-list": "Amigos",
+    "social-conversations-list": "Conversas",
+    "social-friend-requests-list": "Pedidos de amizade",
+    "settings-drawer-navigation": "Configurações",
 }
 
 SOCIAL_TAB_INDEX_NAMES = ["Amigos", "Conversas", "Pedidos de amizade"]
@@ -380,6 +413,16 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
         auto_id, class_name, tag = get_element_identifiers(self)
         search_target = f"{auto_id} {class_name}"
 
+        # 0. Termos de Serviço (ToS / EULA descobertos via REA)
+        if "tos-accept" in search_target:
+            return "Aceitar Termos de Serviço"
+        elif "tos-checkbox" in search_target:
+            return "Caixa de seleção: Li e concordo com os Termos de Serviço"
+        elif "tos-decline" in search_target:
+            return "Recusar Termos de Serviço"
+        elif "tos-content-error-retry" in search_target:
+            return "Tentar novamente carregar Termos de Serviço"
+
         # 1. Controles de Janela
         if "close" in search_target or "fechar" in search_target:
             return "Fechar janela"
@@ -396,7 +439,11 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
         elif "chevron-down" in search_target:
             return "Expandir ou recolher seção"
 
-        # 3. Cabeçalho / Barra Superior
+        # 3. Cabeçalho, Painel Lateral e Social
+        elif "side-panel-collapse-button" in search_target:
+            return "Recolher ou expandir painel lateral"
+        elif "side-panel-riot-id" in search_target:
+            return "Meu Riot ID"
         elif any(k in search_target for k in ["presence", "status"]):
             return "Status da Conta: Online"
         elif any(k in search_target for k in ["profile", "avatar", "identity"]):
@@ -407,16 +454,27 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
             return "Notificações"
         elif any(k in search_target for k in ["downloadsquare", "download"]):
             return "Gerenciador de Downloads"
-        elif any(k in search_target for k in ["friend", "social-presence-bar"]):
+        elif any(k in search_target for k in ["friend", "social-presence-bar", "social-presence-button"]):
             return "Painel Social e Amigos"
         elif "add-friend" in search_target:
             return "Adicionar Amigo"
         elif "chat-window-close" in search_target:
             return "Fechar Bate-papo"
+        elif "social-chat-item" in search_target:
+            return "Conversa"
+        elif "social-friend-item" in search_target:
+            return "Amigo"
+        elif "whats-new-modal" in search_target:
+            return "Fechar novidades"
 
-        # 4. Ação Principal (CTA)
-        elif any(k in search_target for k in ["cta", "play", "install", "update", "jogar", "instalar"]):
-            return "Iniciar Jogo / Instalar"
+        # 4. Ação Principal (CTA - cta-button-resting-state-button, etc.)
+        elif any(k in search_target for k in [
+            "cta-button", "cta-button-resting-state-button", "cta-button-working-state-launchable-button",
+            "quick-action-button", "cta", "play", "install", "update", "jogar", "instalar"
+        ]):
+            return "Jogar / Iniciar League of Legends"
+        elif "cta-button-working-state-button" in search_target:
+            return "Atualizando League of Legends (Pausar/Retomar)"
 
         # 5. Inspecionar filhos em busca de texto usando super().children
         try:
@@ -539,6 +597,16 @@ class AppModule(appModuleHandler.AppModule):
 
         super().chooseNVDAObjectOverlayClasses(obj, clsList)
 
+    def event_gainFocus(self, obj, nextHandler):
+        """Notifica o usuário se houver Termos de Serviço pendentes logo ao focar o cliente."""
+        try:
+            eula = get_riot_eula_status()
+            if eula == "AcceptanceRequired":
+                ui.message("Atenção: Novos Termos de Serviço pendentes no Riot Client. Pressione Control+Shift+T para aceitar automaticamente.")
+        except Exception:
+            pass
+        nextHandler()
+
     # ========================================================================
     # ATALHOS DE TECLADO (SCRIPTS)
     # ========================================================================
@@ -579,13 +647,28 @@ class AppModule(appModuleHandler.AppModule):
             log.debug(f"lolAccessibility: Erro ao varrer tela para download: {e}")
 
         if is_ready and not found_text:
-            ui.message("League of Legends está 100% instalado e pronto para jogar! Pressione Enter em 'Jogar'.")
+            ui.message("League of Legends está 100% instalado e pronto para jogar! Pressione Enter em 'Jogar' ou Control+Shift+J.")
             return
 
         if found_text:
             msg = "Progresso de Download: " + ". ".join(found_text)
             ui.message(msg)
             return
+
+        # Consultar via API se a varredura não achou texto
+        try:
+            installs = get_riot_install_status()
+            if installs and "league_of_legends.live" in installs:
+                lol_st = installs["league_of_legends.live"].get("patch", {})
+                state = lol_st.get("state", "")
+                if state == "up_to_date":
+                    ui.message("League of Legends está atualizado e pronto para jogar! Pressione Control+Shift+J para iniciar.")
+                    return
+                elif state:
+                    ui.message(f"Status do League of Legends na Riot: {state}.")
+                    return
+        except Exception:
+            pass
 
         user = get_riot_user_info()
         user_name = user["full_tag"] if user else "Invocador"
@@ -605,13 +688,33 @@ class AppModule(appModuleHandler.AppModule):
             ui.message("Usuário conectado no Riot Client. Status: Online.")
 
     @script(
-        description="Rola o container de Termos de Serviço (ToS) e clica em Aceitar no Riot Client.",
+        description="Consulta a lista de amigos online e atividades no Riot Client.",
+        gestures=["kb:NVDA+shift+f", "kb:control+shift+f"]
+    )
+    def script_announceFriends(self, gesture):
+        """Informa amigos conectados e suas presenças nos jogos Riot."""
+        res = get_riot_friends_summary()
+        ui.message(res)
+
+    @script(
+        description="Aceita Termos de Serviço (ToS) via API REST da Riot ou por rolagem do container CEF.",
         gestures=["kb:NVDA+shift+t", "kb:control+shift+t"]
     )
     def script_acceptTerms(self, gesture):
-        """Rola fisicamente o container de termos e clica em Aceitar."""
-        ui.message("Iniciando rolagem e aceitação dos Termos de Serviço...")
+        """Aceita termos instantaneamente via API ou fallback por UIA/rolagem."""
+        ui.message("Verificando Termos de Serviço...")
+        # 1. Tentar aceitar diretamente via API REST nativa da Riot
+        try:
+            ok, msg = accept_riot_eula()
+            if ok:
+                ui.message(msg)
+                return
+        except Exception as e:
+            log.debug(f"lolAccessibility: Falha ao aceitar termos via API: {e}")
+
+        # 2. Fallback via rolagem física e clique UIA
         if scroll_and_accept_async:
+            ui.message("Acionando assistente de rolagem e aceitação de termos...")
             def _cb(ok, msg):
                 ui.message(msg)
             scroll_and_accept_async(callback=_cb)
@@ -619,44 +722,44 @@ class AppModule(appModuleHandler.AppModule):
             ui.message("Assistente de termos não disponível.")
 
     @script(
-        description="Move o foco para o botão principal de ação (Jogar, Instalar ou Atualizar) ou aceita Termos de Serviço pendentes.",
+        description="Inicia o League of Legends diretamente ou move o foco para o botão principal de ação (Jogar/Instalar).",
         gestures=["kb:NVDA+shift+j", "kb:control+shift+j"]
     )
     def script_focusActionButton(self, gesture):
-        """Localiza o botão primário de ação do Riot Client ou aceita termos pendentes."""
+        """Inicia League of Legends via API ou aciona o botão principal do Riot Client."""
         try:
+            # 1. Se houver Termos pendentes, aceitar primeiro
+            if get_riot_eula_status() == "AcceptanceRequired":
+                ok, msg = accept_riot_eula()
+                if ok:
+                    ui.message("Termos de Serviço aceitos automaticamente! Verificando inicialização...")
+
+            # 2. Tentar iniciar LoL diretamente via API REST nativa da Riot
+            installs = get_riot_install_status()
+            if installs and "league_of_legends.live" in installs:
+                lol_patch = installs["league_of_legends.live"].get("patch", {})
+                if lol_patch.get("state") == "up_to_date":
+                    ui.message("Iniciando League of Legends pelo Riot Client...")
+                    ok, launch_msg = launch_riot_game("league_of_legends", "live")
+                    if ok:
+                        return
+
+            # 3. Fallback: procurar botão CTA na tela (cta-button, Jogar, etc.)
             fg = api.getForegroundObject()
             if fg:
-                # 1. Verificar se estamos diante de um diálogo de Termos de Serviço
-                has_tos_dialog = False
-                def check_tos(o, depth=0):
-                    nonlocal has_tos_dialog
-                    if has_tos_dialog or depth > 8:
-                        return
-                    t = f"{o.name or ''} {getattr(o, 'value', '') or ''}".lower()
-                    if any(k in t for k in ["role para aceitar", "termos de serviço", "termos de servico", "contrato do usuário", "acordo de licença"]):
-                        has_tos_dialog = True
-                        return
-                    for c in o.children:
-                        check_tos(c, depth + 1)
-                check_tos(fg)
-
-                if has_tos_dialog:
-                    ui.message("Diálogo de Termos de Serviço detectado! Rolando e aceitando...")
-                    if scroll_and_accept_async:
-                        def _cb(ok, msg):
-                            ui.message(msg)
-                        scroll_and_accept_async(callback=_cb)
-                        return
-
                 target = None
                 def find_btn(o, depth=0):
                     nonlocal target
                     if target or depth > 10:
                         return
                     name = (o.name or "").lower()
-                    if o.role == ROLE_BUTTON:
-                        if any(k in name for k in ["jogar", "instalar", "atualizar", "play", "install", "update", "começar", "comecar", "iniciar", "aceitar"]):
+                    auto_id, class_name, _ = get_element_identifiers(o)
+                    elem_str = f"{name} {auto_id} {class_name}"
+                    if o.role == ROLE_BUTTON or "button" in class_name:
+                        if any(k in elem_str for k in [
+                            "cta-button", "quick-action-button", "jogar", "iniciar",
+                            "play", "install", "update", "começar", "comecar", "aceitar"
+                        ]):
                             target = o
                             return
                     for c in o.children:
@@ -669,12 +772,12 @@ class AppModule(appModuleHandler.AppModule):
                         target.doDefaultAction()
                     except Exception:
                         pass
-                    ui.message(f"Ação executada: {target.name}")
+                    ui.message(f"Ação executada: {target.name or 'Jogar'}")
                     return
         except Exception as e:
             log.debug(f"lolAccessibility: Erro ao focar botão de ação: {e}")
             
-        ui.message("Botão de ação principal não localizado na tela atual.")
+        ui.message("Não foi possível iniciar o jogo ou localizar o botão principal.")
 
     @script(
         description="Exibe os atalhos de acessibilidade do Riot Client e League of Legends.",
@@ -683,10 +786,11 @@ class AppModule(appModuleHandler.AppModule):
     def script_help(self, gesture):
         help_text = (
             "Atalhos de Acessibilidade Riot & LoL: "
-            "Control+Shift+T: Rolar e aceitar Termos de Serviço (ToS) automaticamente. "
-            "Control+Shift+D: Anunciar progresso do download. "
-            "Control+Shift+S: Anunciar usuário e status. "
-            "Control+Shift+J: Ir para o botão Jogar ou Instalar. "
+            "Control+Shift+J: Iniciar League of Legends diretamente ou acionar botão principal. "
+            "Control+Shift+T: Aceitar Termos de Serviço (ToS) automaticamente. "
+            "Control+Shift+F: Anunciar amigos online e jogos em execução. "
+            "Control+Shift+D: Anunciar progresso do download e instalação. "
+            "Control+Shift+S: Anunciar usuário conectado e status. "
             "F6: Aceitar partida encontrada no LoL. "
             "Control+Shift+F6: Alternar aceitação automática de partida. "
             "Control+Shift+C: Informações da seleção de campeões."
