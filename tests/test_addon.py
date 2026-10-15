@@ -1191,16 +1191,23 @@ def test_upper_menus_and_social_tabs():
     if not hasattr(sys.modules["logHandler"], "log"):
         sys.modules["logHandler"].log = types.SimpleNamespace(info=lambda *a: None, debug=lambda *a: None, error=lambda *a: None)
 
-    from appModules.riotclient import RiotSmartTab, RiotSmartButton, SOCIAL_TAB_INDEX_NAMES
+    from appModules.riotclient import RiotSmartTab, RiotSmartButton, RiotSmartEdit, RiotSocialItem, SOCIAL_TAB_INDEX_NAMES
+
+    class MockLoc:
+        def __init__(self, left, top=50):
+            self.left = left
+            self.top = top
+            self.width = 100
+            self.height = 40
 
     class MockTab(RiotSmartTab):
-        def __init__(self, pos, setsize=3, raw_name="animation"):
+        def __init__(self, pos, setsize=3, raw_name="animation", left=1600):
             self._pos = str(pos)
             self._setsize = str(setsize)
             self._name = raw_name
             self.parent = None
             self.children = []
-            self.location = None
+            self.location = MockLoc(left)
         @property
         def name(self):
             return self._name
@@ -1208,25 +1215,43 @@ def test_upper_menus_and_social_tabs():
         def IA2Attributes(self):
             return {"class": "tab-button", "tag": "button", "posinset": self._pos, "setsize": self._setsize}
 
-    tab1 = MockTab(1)
+    # Teste de Abas Sociais (lado direito, L > 1400)
+    tab1 = MockTab(1, setsize=3, left=1550)
     assert tab1._get_name() == "Amigos"
     assert tab1._get_role() == 22
     assert tab1._get_roleText() == "guia"
     assert tab1._get_positionInGroup() == (1, 3)
 
-    tab2 = MockTab(2)
+    tab2 = MockTab(2, setsize=3, left=1660)
     assert tab2._get_name() == "Conversas"
     assert tab2._get_positionInGroup() == (2, 3)
 
-    tab3 = MockTab(3)
+    tab3 = MockTab(3, setsize=3, left=1770)
     assert tab3._get_name() == "Pedidos de amizade"
     assert tab3._get_positionInGroup() == (3, 3)
 
+    # Teste de Abas do Game Hub (lado central, L < 1400)
+    hub_tab1 = MockTab(1, setsize=4, raw_name="Visão Geral", left=500)
+    assert hub_tab1._get_name() == "Visão Geral"  # Não deve ser sobrescrito por 'Amigos'!
+
+    hub_tab2 = MockTab(2, setsize=4, raw_name="Notas de Atualização", left=650)
+    assert hub_tab2._get_name() == "Notas de Atualização"
+
+    hub_tab3 = MockTab(3, setsize=4, raw_name="eSports", left=880)
+    assert hub_tab3._get_name() == "eSports"
+
+    hub_tab4 = MockTab(4, setsize=4, raw_name="Pick'Ems", left=995)
+    assert hub_tab4._get_name() == "Pick'Ems"
+
+    # Teste de Aba do Game Hub com nome vazio/animação (fallback posicional de hub)
+    hub_tab_anon = MockTab(1, setsize=4, raw_name="animation", left=500)
+    assert hub_tab_anon._get_name() == "Visão Geral"
+
     class MockChild:
-        def __init__(self, name):
+        def __init__(self, name, class_name=""):
             self.name = name
             self.children = []
-            self.IA2Attributes = {}
+            self.IA2Attributes = {"class": class_name} if class_name else {}
 
     class MockBtn(RiotSmartButton):
         def __init__(self, class_name, raw_name, children=None):
@@ -1257,7 +1282,57 @@ def test_upper_menus_and_social_tabs():
     nav_item = MockBtn("settings-navigation-item", "", children=[MockChild("GERAL")])
     assert nav_item._get_name() == "Geral"
 
-    print("OK: Menus superiores, abas sociais e configurações validados com 100% de sucesso.")
+    vol_btn = MockBtn("volume-button", "Volume On")
+    assert "Áudio do vídeo promocional (Ativado" in vol_btn._get_name()
+
+    card_btn = MockBtn("base-card-button", "Campeão em Destaque: Smolder")
+    assert card_btn._get_name() == "Destaque: Campeão em Destaque: Smolder"
+
+    # Teste de Campos de Edição (RiotSmartEdit)
+    class MockEdit(RiotSmartEdit):
+        def __init__(self, placeholder, class_name="text-input-field", parent_class=""):
+            self._ph = placeholder
+            self._class = class_name
+            self._p_class = parent_class
+            self.parent = types.SimpleNamespace(IA2Attributes={"class": parent_class}, parent=None) if parent_class else None
+            self.location = None
+            self.description = ""
+        @property
+        def name(self):
+            return ""
+        @property
+        def IA2Attributes(self):
+            return {"placeholder": self._ph, "class": self._class, "tag": "input"}
+
+    edit_game_name = MockEdit("Nome do jogo", parent_class="social-panel-content")
+    assert edit_game_name._get_name() == "Riot ID do amigo (Nome do jogo)"
+    assert "Riot ID" in edit_game_name._get_description()
+
+    edit_tagline = MockEdit("Tagline", parent_class="add-friend-tag-line-input")
+    assert edit_tagline._get_name() == "Tagline (#TAG do amigo, ex: BR1)"
+    assert "identificador" in edit_tagline._get_description()
+
+    # Teste de Itens da Lista de Amigos (RiotSocialItem)
+    class MockSocial(RiotSocialItem):
+        def __init__(self, friend_name, status_text):
+            self.children = [
+                MockChild(friend_name, class_name="social-item-heading"),
+                MockChild(status_text, class_name="social-item-caption")
+            ]
+            self.location = None
+        @property
+        def name(self):
+            return ""
+        @property
+        def IA2Attributes(self):
+            return {"class": "social-item social-panel-social-item", "tag": "div"}
+
+    friend_item = MockSocial("Faker", "Em partida (League of Legends)")
+    assert friend_item._get_name() == "Faker (Status: Em partida (League of Legends))"
+    assert friend_item._get_role() == 15
+    assert friend_item._get_roleText() == "amigo"
+
+    print("OK: Menus superiores, abas sociais, game hub, campos de edição e amigos validados com 100% de sucesso.")
 
 
 if __name__ == "__main__":

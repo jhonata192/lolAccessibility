@@ -116,6 +116,9 @@ ROLE_DOCUMENT = getattr(_Role, "DOCUMENT", getattr(controlTypes, "ROLE_DOCUMENT"
 ROLE_PANE = getattr(_Role, "PANE", getattr(controlTypes, "ROLE_PANE", 16))
 ROLE_POPUPMENU = getattr(_Role, "POPUPMENU", getattr(controlTypes, "ROLE_POPUPMENU", 102))
 ROLE_MENUITEM = getattr(_Role, "MENUITEM", getattr(controlTypes, "ROLE_MENUITEM", 11))
+ROLE_EDITABLETEXT = getattr(_Role, "EDITABLETEXT", getattr(controlTypes, "ROLE_EDITABLETEXT", 8))
+ROLE_LISTITEM = getattr(_Role, "LISTITEM", getattr(controlTypes, "ROLE_LISTITEM", 15))
+
 
 
 
@@ -212,7 +215,7 @@ KNOWN_TAB_NAMES = {
 SOCIAL_TAB_INDEX_NAMES = ["Amigos", "Conversas", "Pedidos de amizade"]
 LOGIN_TAB_INDEX_NAMES = ["Entrar com Riot ID", "Entrar com QR Code"]
 SYSTEM_TAB_INDEX_NAMES = ["Windows", "macOS"]
-GAME_HUB_TAB_INDEX_NAMES = ["Visão Geral", "Notas de Atualização", "Notícias", "Eventos"]
+GAME_HUB_TAB_INDEX_NAMES = ["Visão Geral", "Notas de Atualização", "eSports", "Pick'Ems"]
 SIDEBAR_GAMES = [
     "League of Legends",
     "Teamfight Tactics",
@@ -346,34 +349,16 @@ class RiotSmartTab(NVDAObjects.NVDAObject):
             raw_name = getattr(self, "_name", "") or ""
         auto_id, class_name, tag = get_element_identifiers(self)
 
-        # 0. Verificação direta de IA2Attributes (posinset / setsize)
-        try:
-            ia2 = getattr(self, "IA2Attributes", None)
-            ia2_dict = dict(ia2) if ia2 and hasattr(ia2, "items") else {}
-            pos = ia2_dict.get("posinset")
-            set_size = ia2_dict.get("setsize")
-            if pos:
-                p_int = int(pos)
-                if set_size == "3" or "tab-button" in class_name or "social" in class_name:
-                    if 1 <= p_int <= len(SOCIAL_TAB_INDEX_NAMES):
-                        return SOCIAL_TAB_INDEX_NAMES[p_int - 1]
-                elif set_size == "2":
-                    if 1 <= p_int <= len(LOGIN_TAB_INDEX_NAMES):
-                        return LOGIN_TAB_INDEX_NAMES[p_int - 1]
-                elif set_size and int(set_size) >= 4 and p_int <= len(GAME_HUB_TAB_INDEX_NAMES):
-                    return GAME_HUB_TAB_INDEX_NAMES[p_int - 1]
-        except Exception:
-            pass
-
-        # Se já tem um nome válido e descritivo
+        # 1. Se já tem um nome válido e descritivo vindo da acessibilidade (não genérico)
         if raw_name and raw_name.lower() not in ("animation", "lottie", "tab", "guia", "button", "botão") and not raw_name.isdigit():
             return raw_name
-            
+
+        # 2. Verificação por dicionário semântico direto
         for key, label in KNOWN_TAB_NAMES.items():
             if key in auto_id or key in class_name:
                 return label
-                
-        # 1. Inspecionar filhos (ícone SVG ou texto oculto) usando super().children
+
+        # 3. Inspecionar filhos (ícone SVG ou texto oculto) usando super().children
         try:
             for child in super().children:
                 c_name = (child.name or "").strip()
@@ -386,11 +371,34 @@ class RiotSmartTab(NVDAObjects.NVDAObject):
         except Exception:
             pass
 
-        # 2. Inferência por posição entre as guias irmãs (tablist)
+        # 4. Verificação direta de IA2Attributes (posinset / setsize) e coordenadas espaciais
+        try:
+            ia2 = getattr(self, "IA2Attributes", None)
+            ia2_dict = dict(ia2) if ia2 and hasattr(ia2, "items") else {}
+            pos = ia2_dict.get("posinset")
+            set_size = ia2_dict.get("setsize")
+            loc = getattr(self, "location", None)
+            if pos:
+                p_int = int(pos)
+                # Abas Sociais (Painel Direito: setsize == 3, ou left > 1400, ou classe social)
+                if set_size == "3" or (loc and loc.left > 1400) or "social" in class_name:
+                    if 1 <= p_int <= len(SOCIAL_TAB_INDEX_NAMES):
+                        return SOCIAL_TAB_INDEX_NAMES[p_int - 1]
+                elif set_size == "2" or (loc and loc.left < 500 and "login" in class_name):
+                    if 1 <= p_int <= len(LOGIN_TAB_INDEX_NAMES):
+                        return LOGIN_TAB_INDEX_NAMES[p_int - 1]
+                elif ((set_size and int(set_size) >= 4) or (loc and 150 < loc.left < 1400)):
+                    if 1 <= p_int <= len(GAME_HUB_TAB_INDEX_NAMES):
+                        return GAME_HUB_TAB_INDEX_NAMES[p_int - 1]
+        except Exception:
+            pass
+
+        # 5. Inferência por posição entre as guias irmãs (tablist)
         try:
             parent = self.parent
             if parent:
                 p_id, p_class, _ = get_element_identifiers(parent)
+                loc = getattr(self, "location", None)
                 
                 # Coletar irmãos que sejam guias
                 tab_siblings = [
@@ -410,17 +418,18 @@ class RiotSmartTab(NVDAObjects.NVDAObject):
                 if idx >= 0:
                     total = len(tab_siblings)
                     
-                    if "social" in p_class or "social" in p_id or total == 3:
+                    if (loc and loc.left > 1400) or "social" in p_class or "social" in p_id or total == 3:
                         if idx < len(SOCIAL_TAB_INDEX_NAMES):
                             return SOCIAL_TAB_INDEX_NAMES[idx]
                     elif "login" in p_class or "login" in p_id or (total == 2 and "sign" in p_class):
                         if idx < len(LOGIN_TAB_INDEX_NAMES):
                             return LOGIN_TAB_INDEX_NAMES[idx]
-                    elif "system" in p_class or total == 2:
+                    elif "system" in p_class:
                         if idx < len(SYSTEM_TAB_INDEX_NAMES):
                             return SYSTEM_TAB_INDEX_NAMES[idx]
-                    elif total >= 3 and idx < len(GAME_HUB_TAB_INDEX_NAMES):
-                        return GAME_HUB_TAB_INDEX_NAMES[idx]
+                    elif (loc and 150 < loc.left < 1400) or "hub" in p_class or total >= 4:
+                        if idx < len(GAME_HUB_TAB_INDEX_NAMES):
+                            return GAME_HUB_TAB_INDEX_NAMES[idx]
                     else:
                         return f"Guia {idx + 1}"
         except Exception:
@@ -518,6 +527,14 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
         elif raw_name.lower() == "video on":
             return "Vídeo promocional (Reproduzindo - pressione Enter para pausar)"
 
+        # Tratar botão de áudio/volume do vídeo promocional
+        if raw_name.lower() in ("volume on", "volumeon") or ("volume-button" in class_name and "on" in raw_name.lower()):
+            return "Áudio do vídeo promocional (Ativado - pressione Enter para silenciar)"
+        elif raw_name.lower() in ("volume off", "volumeoff", "mute") or ("volume-button" in class_name and "off" in raw_name.lower()):
+            return "Áudio do vídeo promocional (Silenciado - pressione Enter para ativar som)"
+        elif "volume-button" in class_name:
+            return "Áudio do vídeo promocional"
+
         # 0. Botões de jogos na barra lateral (quick-action-disclosure)
         if "quick-action-disclosure" in class_name or "quick-action-disclosure" in auto_id:
             game_name = "Jogo"
@@ -592,6 +609,11 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
         # Tratar números soltos de carrossel de notícias (ex: '0', '1', '13')
         if raw_name.isdigit() and "quick-action" not in class_name and "disclosure" not in class_name:
             return f"Slide {raw_name}"
+
+        # Tratar cards promocionais e destaques do Game Hub
+        if "base-card-button" in class_name or "card-button" in class_name:
+            if raw_name and raw_name.lower() not in ("animation", "button", "botão") and not raw_name.isdigit():
+                return f"Destaque: {raw_name}"
 
         # Se já tiver um nome legítimo e não for genérico
         if raw_name and raw_name.lower() not in ("animation", "lottie", "button", "botão", "graphic", "imagem"):
@@ -684,7 +706,7 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
 
     def _get_firstChild(self):
         auto_id, class_name, _ = get_element_identifiers(self)
-        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse", "identity-menu-disclosure", "settings-navigation-item", "riot-modal-close")):
+        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse", "identity-menu-disclosure", "settings-navigation-item", "riot-modal-close", "video-button", "volume-button", "base-card-button")):
             return None
         raw = self.name
         if raw and raw.lower() not in ("botão", "button"):
@@ -693,7 +715,7 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
 
     def _get_children(self):
         auto_id, class_name, _ = get_element_identifiers(self)
-        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse", "identity-menu-disclosure", "settings-navigation-item", "riot-modal-close")):
+        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse", "identity-menu-disclosure", "settings-navigation-item", "riot-modal-close", "video-button", "volume-button", "base-card-button")):
             return []
         raw = self.name
         if raw and raw.lower() not in ("botão", "button"):
@@ -773,6 +795,124 @@ class RiotSmartLink(NVDAObjects.NVDAObject):
         return super().children
 
 
+class RiotSmartEdit(NVDAObjects.NVDAObject):
+    """
+    Melhora a acessibilidade de campos de entrada de texto no Riot Client,
+    como 'Nome do jogo' (Riot ID) e 'Tagline' (#TAG) ao adicionar amigos, campos de busca e filtros.
+    """
+    def _get_name(self):
+        try:
+            raw_name = (super().name or "").strip()
+        except Exception:
+            raw_name = getattr(self, "_name", "") or ""
+
+        ia2 = getattr(self, "IA2Attributes", None)
+        ia2_dict = dict(ia2) if (ia2 and hasattr(ia2, "items")) else {}
+        placeholder = (ia2_dict.get("placeholder", "") or "").strip()
+        auto_id, class_name, tag = get_element_identifiers(self)
+
+        p = getattr(self, "parent", None)
+        gp = getattr(p, "parent", None) if p else None
+        ggp = getattr(gp, "parent", None) if gp else None
+
+        parent_classes = " ".join([
+            get_element_identifiers(p)[1] if p else "",
+            get_element_identifiers(gp)[1] if gp else "",
+            get_element_identifiers(ggp)[1] if ggp else "",
+        ]).lower()
+
+        if placeholder:
+            plow = placeholder.lower()
+            if "nome do jogo" in plow or "game name" in plow or "game-name" in parent_classes:
+                return "Riot ID do amigo (Nome do jogo)"
+            elif "tagline" in plow or "tag-line" in parent_classes:
+                return "Tagline (#TAG do amigo, ex: BR1)"
+            elif "pesquis" in plow or "search" in plow:
+                return f"Pesquisar: {placeholder}"
+            return placeholder.capitalize()
+
+        if "add-friend-tag-line" in parent_classes:
+            return "Tagline (#TAG do amigo, ex: BR1)"
+        elif "social-panel" in parent_classes and "add" in parent_classes:
+            return "Riot ID do amigo (Nome do jogo)"
+
+        if raw_name and raw_name.lower() not in ("edição", "input", "edit", "text") and not raw_name.isdigit():
+            return raw_name
+
+        return "Campo de texto"
+
+    def _get_description(self):
+        try:
+            desc = super().description or ""
+        except Exception:
+            desc = ""
+        ia2 = getattr(self, "IA2Attributes", None)
+        ia2_dict = dict(ia2) if (ia2 and hasattr(ia2, "items")) else {}
+        placeholder = (ia2_dict.get("placeholder", "") or "").strip().lower()
+
+        if "tagline" in placeholder:
+            return "Digite o identificador de região ou número do amigo sem a hashtag (exemplo: BR1)"
+        elif "nome do jogo" in placeholder:
+            return "Digite o Riot ID do jogador que você deseja adicionar como amigo"
+
+        return desc
+
+
+class RiotSocialItem(NVDAObjects.NVDAObject):
+    """
+    Identifica itens de amigos e presença no Painel Social do Riot Client,
+    anunciando o nome do amigo e o status de presença (Online, Em partida, Ausente, etc.).
+    """
+    def _get_role(self):
+        return getattr(controlTypes.Role, "LISTITEM", 15)
+
+    def _get_roleText(self):
+        return "amigo"
+
+    def _get_name(self):
+        try:
+            raw_name = (super().name or "").strip()
+        except Exception:
+            raw_name = getattr(self, "_name", "") or ""
+
+        heading = ""
+        caption = ""
+
+        try:
+            for c in (getattr(self, "children", []) or []):
+                _, c_cls, _ = get_element_identifiers(c)
+                if "social-item-heading" in c_cls:
+                    for sub in (getattr(c, "children", []) or [c]):
+                        s_name = (getattr(sub, "name", "") or "").strip()
+                        clean = "".join(ch for ch in s_name if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+                        if clean:
+                            heading = clean
+                            break
+                    if not heading and getattr(c, "name", ""):
+                        heading = getattr(c, "name", "").strip()
+
+                elif "social-item-caption" in c_cls:
+                    for sub in (getattr(c, "children", []) or [c]):
+                        s_name = (getattr(sub, "name", "") or "").strip()
+                        clean = "".join(ch for ch in s_name if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+                        if clean:
+                            caption = clean
+                            break
+                    if not caption and getattr(c, "name", ""):
+                        caption = getattr(c, "name", "").strip()
+        except Exception:
+            pass
+
+        if heading:
+            status_part = f" (Status: {caption})" if caption else ""
+            return f"{heading}{status_part}"
+
+        if raw_name and raw_name.lower() not in ("item", "social-item", "seção", "section"):
+            return raw_name
+
+        return "Amigo da lista social"
+
+
 # ============================================================================
 # MÓDULO PRINCIPAL DO RIOT CLIENT
 # ============================================================================
@@ -799,19 +939,35 @@ class AppModule(appModuleHandler.AppModule):
             elif role == ROLE_TAB or "tab-button" in class_name or "tab" in auto_id or tag == "tab" or (tag == "button" and "tab" in class_name):
                 clsList.insert(0, RiotSmartTab)
 
-            # 2. Tratar Botões e Menus Interativos (incluindo menu da conta, disclosures, navegação e itens de configuração)
+            # 2. Tratar Campos de Edição e Inputs de Texto (Nome do jogo, Tagline, busca, etc.)
+            elif role == ROLE_EDITABLETEXT or (tag == "input" and "button" not in class_name) or "text-input" in class_name:
+                clsList.insert(0, RiotSmartEdit)
+
+            # 3. Tratar Itens do Painel Social (Amigos e Presenças)
+            elif "social-item" in class_name and not any(k in class_name for k in ("avatar", "heading", "caption")):
+                clsList.insert(0, RiotSocialItem)
+
+            # 4. Tratar Avatares no Painel Social como Decorativos (evita ruído de imagem redundante)
+            elif "social-item-avatar" in class_name:
+                clsList.insert(0, RiotDecorativeAnimation)
+
+            # 5. Silencia nós de animação e ícones SVG/Lottie internos dentro de abas ou botões
+            elif raw_name in ("animation", "lottie") and (tag in ("div", "svg", "lottie", "span") or not class_name or (getattr(obj, "parent", None) and getattr(obj.parent, "role", None) in (ROLE_BUTTON, ROLE_TAB))):
+                clsList.insert(0, RiotDecorativeAnimation)
+
+            # 6. Tratar Botões e Menus Interativos (incluindo menu da conta, disclosures, navegação e itens de configuração)
             elif role in (ROLE_BUTTON, ROLE_POPUPMENU, ROLE_MENUITEM) or "button" in class_name or tag == "button" or "disclosure" in class_name or "settings-navigation-item" in class_name:
                 clsList.insert(0, RiotSmartButton)
 
-            # 3. Tratar Links
+            # 7. Tratar Links
             elif role == ROLE_LINK or "link" in class_name or tag == "a":
                 clsList.insert(0, RiotSmartLink)
 
-            # 4. Silencia elementos de animação pura ou decorativos que não sejam botões/guias
-            elif role == ROLE_ANIMATION or tag == "svg" or (raw_name in ("animation", "lottie") and not any(k in class_name for k in ("tab", "button", "disclosure", "item"))):
+            # 8. Silencia elementos de animação pura ou decorativos que não sejam botões/guias/inputs
+            elif role == ROLE_ANIMATION or tag == "svg" or (raw_name in ("animation", "lottie") and not any(k in class_name for k in ("tab", "button", "disclosure", "item", "input"))):
                 clsList.insert(0, RiotDecorativeAnimation)
 
-            # 5. Tratar imagens e gráficos sem texto alternativo
+            # 9. Tratar imagens e gráficos sem texto alternativo
             elif role == ROLE_GRAPHIC or tag == "img":
                 clsList.insert(0, RiotAccessibleGraphic)
 
@@ -823,12 +979,12 @@ class AppModule(appModuleHandler.AppModule):
     def event_gainFocus(self, obj, nextHandler):
         """Suprime anúncios espúrios de nós decorativos e notifica se houver Termos pendentes."""
         try:
-            # Se um elemento interno decorativo receber foco (ex: ícone SVG com nome 'animation' dentro de uma aba)
+            # Se um elemento interno decorativo receber foco (ex: ícone SVG com nome 'animation' dentro de uma aba ou botão)
             raw_name = (getattr(obj, "name", "") or "").strip().lower()
             if raw_name in ("animation", "lottie", "graphic", "imagem"):
                 parent = getattr(obj, "parent", None)
-                if parent and (getattr(parent, "role", None) == ROLE_TAB or "tab" in get_element_identifiers(parent)[1]):
-                    # Silenciar ruído interno da aba
+                if parent and (getattr(parent, "role", None) in (ROLE_TAB, ROLE_BUTTON) or any(k in get_element_identifiers(parent)[1] for k in ("tab", "button", "disclosure", "volume", "video"))):
+                    # Silenciar ruído interno da aba ou botão
                     return
         except Exception:
             pass
@@ -1170,6 +1326,74 @@ class AppModule(appModuleHandler.AppModule):
         ui.message("Guias sociais não localizadas na tela atual.")
 
     @script(
+        description="Move o foco diretamente para o campo de adicionar amigo (Riot ID / Nome do jogo).",
+        gestures=["kb:NVDA+shift+a", "kb:control+shift+a"]
+    )
+    def script_focusAddFriend(self, gesture):
+        """Localiza o campo de texto para adicionar amigo e transfere o foco."""
+        try:
+            fg = api.getForegroundObject()
+            if fg:
+                input_target = None
+                def find_input(o, depth=0):
+                    nonlocal input_target
+                    if input_target or depth > 25:
+                        return
+                    ia2 = getattr(o, "IA2Attributes", None)
+                    ia2_dict = dict(ia2) if (ia2 and hasattr(ia2, "items")) else {}
+                    tag = ia2_dict.get("tag", "")
+                    ph = (ia2_dict.get("placeholder", "") or "").lower()
+                    cls_name = ia2_dict.get("class", "")
+                    if tag == "input" and ("nome do jogo" in ph or "amigo" in ph or "game" in ph or "text-input-field" in cls_name):
+                        input_target = o
+                        return
+                    for c in (getattr(o, "children", None) or []):
+                        find_input(c, depth + 1)
+                find_input(fg)
+                if input_target:
+                    input_target.setFocus()
+                    ui.message("Campo Adicionar Amigo focado: Digite o Riot ID.")
+                    return
+        except Exception as e:
+            log.debug(f"lolAccessibility: Erro ao focar adicionar amigo: {e}")
+        ui.message("Campo de adicionar amigo não localizado na tela atual.")
+
+    @script(
+        description="Move o foco para as Guias Centrais do Jogo (Visão Geral, Notas de Atualização, eSports, etc.).",
+        gestures=["kb:NVDA+shift+h", "kb:control+shift+h"]
+    )
+    def script_focusGameHubTabs(self, gesture):
+        """Localiza as guias centrais do Game Hub e transfere o foco."""
+        try:
+            fg = api.getForegroundObject()
+            if fg:
+                tab_target = None
+                def find_hub_tab(o, depth=0):
+                    nonlocal tab_target
+                    if tab_target or depth > 25:
+                        return
+                    loc = getattr(o, "location", None)
+                    role = getattr(o, "role", 0)
+                    ia2 = getattr(o, "IA2Attributes", None)
+                    cls_name = ia2.get("class", "") if (ia2 and hasattr(ia2, "items")) else ""
+                    if loc and 150 < loc.left < 1400 and loc.top < 100 and (role == ROLE_TAB or "tab-button" in cls_name):
+                        states = getattr(o, "states", set())
+                        if getattr(controlTypes.State, "SELECTED", 4) in states:
+                            tab_target = o
+                            return
+                        if not tab_target:
+                            tab_target = o
+                    for c in (getattr(o, "children", None) or []):
+                        find_hub_tab(c, depth + 1)
+                find_hub_tab(fg)
+                if tab_target:
+                    tab_target.setFocus()
+                    return
+        except Exception as e:
+            log.debug(f"lolAccessibility: Erro ao focar abas do jogo: {e}")
+        ui.message("Guias do jogo não localizadas na tela atual.")
+
+    @script(
         description="Exibe os atalhos de acessibilidade do Riot Client e League of Legends.",
         gestures=["kb:f1"]
     )
@@ -1179,6 +1403,8 @@ class AppModule(appModuleHandler.AppModule):
             "Control+Shift+U: Menu da Conta, Perfil e Status. "
             "Control+Shift+P: Abrir Configurações do Riot Client. "
             "Control+Shift+O: Guias Sociais (Amigos, Conversas, Pedidos). "
+            "Control+Shift+H: Guias Centrais do Jogo (Visão Geral, Notas de Atualização, etc.). "
+            "Control+Shift+A: Campo Adicionar Amigo (Riot ID). "
             "Control+Shift+J: Iniciar League of Legends diretamente ou acionar botão principal. "
             "Control+Shift+T: Aceitar Termos de Serviço (ToS) automaticamente. "
             "Control+Shift+F: Anunciar amigos online e jogos em execução. "
