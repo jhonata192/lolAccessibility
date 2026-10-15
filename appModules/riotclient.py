@@ -13,6 +13,7 @@ Corrige e aprimora a acessibilidade da interface Electron/Chromium:
 import os
 import sys
 import re
+import time
 import appModuleHandler
 import controlTypes
 import ui
@@ -113,6 +114,9 @@ ROLE_ANIMATION = getattr(_Role, "ANIMATION", getattr(controlTypes, "ROLE_ANIMATI
 ROLE_GRAPHIC = getattr(_Role, "GRAPHIC", getattr(controlTypes, "ROLE_GRAPHIC", 40))
 ROLE_DOCUMENT = getattr(_Role, "DOCUMENT", getattr(controlTypes, "ROLE_DOCUMENT", 53))
 ROLE_PANE = getattr(_Role, "PANE", getattr(controlTypes, "ROLE_PANE", 16))
+ROLE_POPUPMENU = getattr(_Role, "POPUPMENU", getattr(controlTypes, "ROLE_POPUPMENU", 102))
+ROLE_MENUITEM = getattr(_Role, "MENUITEM", getattr(controlTypes, "ROLE_MENUITEM", 11))
+
 
 
 def get_element_identifiers(obj):
@@ -317,14 +321,54 @@ class RiotSmartTab(NVDAObjects.NVDAObject):
     Substitui anúncios genéricos de 'guia selecionado botão animation' por nomes
     semânticos claros baseados na identificação do componente, ícone ou posição.
     """
+    def _get_role(self):
+        return getattr(controlTypes.Role, "TAB", 22)
+
+    def _get_roleText(self):
+        return "guia"
+
+    def _get_positionInGroup(self):
+        try:
+            ia2 = getattr(self, "IA2Attributes", None)
+            ia2_dict = dict(ia2) if ia2 and hasattr(ia2, "items") else {}
+            pos = ia2_dict.get("posinset")
+            total = ia2_dict.get("setsize")
+            if pos and total:
+                return (int(pos), int(total))
+        except Exception:
+            pass
+        return super().positionInGroup
+
     def _get_name(self):
-        raw_name = (super().name or "").strip()
+        try:
+            raw_name = (super().name or "").strip()
+        except Exception:
+            raw_name = getattr(self, "_name", "") or ""
+        auto_id, class_name, tag = get_element_identifiers(self)
+
+        # 0. Verificação direta de IA2Attributes (posinset / setsize)
+        try:
+            ia2 = getattr(self, "IA2Attributes", None)
+            ia2_dict = dict(ia2) if ia2 and hasattr(ia2, "items") else {}
+            pos = ia2_dict.get("posinset")
+            set_size = ia2_dict.get("setsize")
+            if pos:
+                p_int = int(pos)
+                if set_size == "3" or "tab-button" in class_name or "social" in class_name:
+                    if 1 <= p_int <= len(SOCIAL_TAB_INDEX_NAMES):
+                        return SOCIAL_TAB_INDEX_NAMES[p_int - 1]
+                elif set_size == "2":
+                    if 1 <= p_int <= len(LOGIN_TAB_INDEX_NAMES):
+                        return LOGIN_TAB_INDEX_NAMES[p_int - 1]
+                elif set_size and int(set_size) >= 4 and p_int <= len(GAME_HUB_TAB_INDEX_NAMES):
+                    return GAME_HUB_TAB_INDEX_NAMES[p_int - 1]
+        except Exception:
+            pass
+
         # Se já tem um nome válido e descritivo
         if raw_name and raw_name.lower() not in ("animation", "lottie", "tab", "guia", "button", "botão") and not raw_name.isdigit():
             return raw_name
             
-        auto_id, class_name, tag = get_element_identifiers(self)
-        
         for key, label in KNOWN_TAB_NAMES.items():
             if key in auto_id or key in class_name:
                 return label
@@ -403,10 +447,70 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
     """
     Identifica e fornece nomes intuitivos para botões que não possuem rótulo de texto.
     """
+    def _get_role(self):
+        auto_id, class_name, tag = get_element_identifiers(self)
+        if "identity-menu-disclosure" in class_name or "identity-menu" in auto_id:
+            return getattr(controlTypes.Role, "POPUPMENU", 102)
+        elif "identity-menu-item" in class_name:
+            return getattr(controlTypes.Role, "MENUITEM", 11)
+        try:
+            return super().role
+        except Exception:
+            return getattr(self, "_role", getattr(controlTypes.Role, "BUTTON", 9))
+
     def _get_name(self):
-        raw_name = (super().name or "").strip()
+        try:
+            raw_name = (super().name or "").strip()
+        except Exception:
+            raw_name = getattr(self, "_name", "") or ""
         auto_id, class_name, tag = get_element_identifiers(self)
         search_target = f"{auto_id} {class_name}"
+
+        # 0. Menu da Conta e Perfil no Cabeçalho Superior (identity-menu-disclosure)
+        if "identity-menu-disclosure" in class_name or "identity-menu" in auto_id:
+            user = get_riot_user_info()
+            user_tag = user["full_tag"] if user and user.get("full_tag") else "Minha Conta"
+            status = "Online"
+            notice = ""
+            if raw_name and "multifator" in raw_name.lower():
+                notice = " (Aviso: Habilitar autenticação multifator)"
+            elif raw_name and raw_name.lower() not in ("identity", "perfil", "menu", "botão", "button"):
+                notice = f" ({raw_name})"
+            return f"Menu da Conta: {user_tag} (Status: {status}){notice}"
+
+        # 0.05 Itens do Menu da Conta (identity-menu-item)
+        if "identity-menu-item" in class_name:
+            if raw_name and raw_name.lower() not in ("item", "menuitem", "button", "botão"):
+                return raw_name
+            try:
+                for c in (getattr(self, "children", None) or []):
+                    c_name = (c.name or "").strip()
+                    if c_name and c_name.lower() not in ("item", "menuitem"):
+                        return c_name
+            except Exception:
+                pass
+            return "Opção do Menu da Conta"
+
+        # 0.08 Itens de Navegação nas Configurações (settings-navigation-item)
+        if "settings-navigation-item" in class_name:
+            clean_child_texts = []
+            try:
+                for c in (getattr(self, "children", None) or []):
+                    c_name = "".join(ch for ch in (c.name or "") if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+                    if c_name and c_name.lower() not in ("animation", "lottie", "item"):
+                        clean_child_texts.append(c_name)
+            except Exception:
+                pass
+            if clean_child_texts:
+                return " - ".join(clean_child_texts).title()
+            clean_self = "".join(ch for ch in (raw_name or "") if ord(ch) < 0xE000 or ord(ch) > 0xF8FF).strip()
+            if clean_self:
+                return clean_self.title()
+            return "Opção de Configuração"
+
+        # 0.09 Fechar Modal / Configurações (riot-modal-close)
+        if "riot-modal-close" in class_name or "settings-close" in class_name:
+            return "Fechar configurações"
         
         # Tratar botões de vídeo promocional (Video Off / Video On)
         if raw_name.lower() == "video off":
@@ -580,7 +684,7 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
 
     def _get_firstChild(self):
         auto_id, class_name, _ = get_element_identifiers(self)
-        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse")):
+        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse", "identity-menu-disclosure", "settings-navigation-item", "riot-modal-close")):
             return None
         raw = self.name
         if raw and raw.lower() not in ("botão", "button"):
@@ -589,7 +693,7 @@ class RiotSmartButton(NVDAObjects.NVDAObject):
 
     def _get_children(self):
         auto_id, class_name, _ = get_element_identifiers(self)
-        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse")):
+        if any(k in class_name for k in ("quick-action", "basic-nav", "campaign", "app-controls", "side-panel-collapse", "identity-menu-disclosure", "settings-navigation-item", "riot-modal-close")):
             return []
         raw = self.name
         if raw and raw.lower() not in ("botão", "button"):
@@ -691,23 +795,23 @@ class AppModule(appModuleHandler.AppModule):
             if role in (ROLE_DOCUMENT, ROLE_PANE) and (tag in ("#document", "document") or "chrome_renderwidgethosthwnd" in window_class):
                 clsList.insert(0, RiotDocument)
 
-            # Silencia elementos de animação pura ou decorativos mesmo que venham com role botão no Chromium
-            elif role == ROLE_ANIMATION or "animation" in class_name or tag == "svg" or raw_name in ("animation", "lottie"):
-                clsList.insert(0, RiotDecorativeAnimation)
-
-            # 1. Tratar Guias (Tabs)
-            elif role == ROLE_TAB or "tab-button" in class_name or "tab" in auto_id or tag == "tab":
+            # 1. Tratar Guias (Tabs) - DEVE VIR ANTES DE ANIMAÇÃO para não silenciar as abas sociais com ícones Lottie
+            elif role == ROLE_TAB or "tab-button" in class_name or "tab" in auto_id or tag == "tab" or (tag == "button" and "tab" in class_name):
                 clsList.insert(0, RiotSmartTab)
 
-            # 2. Tratar Botões (incluindo disclosures de ação rápida e navegação)
-            elif role == ROLE_BUTTON or "button" in class_name or tag == "button" or "disclosure" in class_name:
+            # 2. Tratar Botões e Menus Interativos (incluindo menu da conta, disclosures, navegação e itens de configuração)
+            elif role in (ROLE_BUTTON, ROLE_POPUPMENU, ROLE_MENUITEM) or "button" in class_name or tag == "button" or "disclosure" in class_name or "settings-navigation-item" in class_name:
                 clsList.insert(0, RiotSmartButton)
 
             # 3. Tratar Links
             elif role == ROLE_LINK or "link" in class_name or tag == "a":
                 clsList.insert(0, RiotSmartLink)
 
-            # 4. Tratar imagens e gráficos sem texto alternativo
+            # 4. Silencia elementos de animação pura ou decorativos que não sejam botões/guias
+            elif role == ROLE_ANIMATION or tag == "svg" or (raw_name in ("animation", "lottie") and not any(k in class_name for k in ("tab", "button", "disclosure", "item"))):
+                clsList.insert(0, RiotDecorativeAnimation)
+
+            # 5. Tratar imagens e gráficos sem texto alternativo
             elif role == ROLE_GRAPHIC or tag == "img":
                 clsList.insert(0, RiotAccessibleGraphic)
 
@@ -717,7 +821,18 @@ class AppModule(appModuleHandler.AppModule):
         super().chooseNVDAObjectOverlayClasses(obj, clsList)
 
     def event_gainFocus(self, obj, nextHandler):
-        """Notifica o usuário se houver Termos de Serviço pendentes logo ao focar o cliente."""
+        """Suprime anúncios espúrios de nós decorativos e notifica se houver Termos pendentes."""
+        try:
+            # Se um elemento interno decorativo receber foco (ex: ícone SVG com nome 'animation' dentro de uma aba)
+            raw_name = (getattr(obj, "name", "") or "").strip().lower()
+            if raw_name in ("animation", "lottie", "graphic", "imagem"):
+                parent = getattr(obj, "parent", None)
+                if parent and (getattr(parent, "role", None) == ROLE_TAB or "tab" in get_element_identifiers(parent)[1]):
+                    # Silenciar ruído interno da aba
+                    return
+        except Exception:
+            pass
+
         try:
             eula = get_riot_eula_status()
             if eula == "AcceptanceRequired":
@@ -905,12 +1020,165 @@ class AppModule(appModuleHandler.AppModule):
         ui.message("Não foi possível iniciar o jogo ou localizar o botão principal.")
 
     @script(
+        description="Move o foco diretamente para o Menu da Conta e Perfil no topo da tela.",
+        gestures=["kb:NVDA+shift+u", "kb:control+shift+u"]
+    )
+    def script_focusAccountMenu(self, gesture):
+        """Localiza o botão identity-menu-disclosure e transfere o foco."""
+        try:
+            fg = api.getForegroundObject()
+            if fg:
+                target = None
+                def find_menu(o, depth=0):
+                    nonlocal target
+                    if target or depth > 25:
+                        return
+                    ia2 = getattr(o, "IA2Attributes", None)
+                    cls_name = ia2.get("class", "") if (ia2 and hasattr(ia2, "items")) else ""
+                    auto_id, c_name, _ = get_element_identifiers(o)
+                    if "identity-menu-disclosure" in cls_name or "identity-menu-disclosure" in c_name:
+                        target = o
+                        return
+                    for c in (getattr(o, "children", None) or []):
+                        find_menu(c, depth + 1)
+                find_menu(fg)
+                if target:
+                    target.setFocus()
+                    return
+        except Exception as e:
+            log.debug(f"lolAccessibility: Erro ao focar menu da conta: {e}")
+        ui.message("Menu da conta não localizado na tela atual.")
+
+    @script(
+        description="Abre a tela de Configurações do Riot Client diretamente.",
+        gestures=["kb:NVDA+shift+p", "kb:control+shift+p"]
+    )
+    def script_openSettings(self, gesture):
+        """Localiza o menu da conta e aciona o item Configurações."""
+        try:
+            fg = api.getForegroundObject()
+            if fg:
+                # 1. Verificar se a gaveta de configurações já está aberta
+                settings_item = None
+                def find_open_settings(o, depth=0):
+                    nonlocal settings_item
+                    if settings_item or depth > 25:
+                        return
+                    ia2 = getattr(o, "IA2Attributes", None)
+                    cls_name = ia2.get("class", "") if (ia2 and hasattr(ia2, "items")) else ""
+                    if "settings-drawer" in cls_name or "settings-navigation-item" in cls_name or "riot-modal-close" in cls_name:
+                        settings_item = o
+                        return
+                    for c in (getattr(o, "children", None) or []):
+                        find_open_settings(c, depth + 1)
+                find_open_settings(fg)
+                if settings_item:
+                    settings_item.setFocus()
+                    ui.message("Configurações já estão abertas.")
+                    return
+
+                # 2. Localizar identity-menu-disclosure
+                account_menu = None
+                def find_acc(o, depth=0):
+                    nonlocal account_menu
+                    if account_menu or depth > 25:
+                        return
+                    ia2 = getattr(o, "IA2Attributes", None)
+                    cls_name = ia2.get("class", "") if (ia2 and hasattr(ia2, "items")) else ""
+                    auto_id, c_name, _ = get_element_identifiers(o)
+                    if "identity-menu-disclosure" in cls_name or "identity-menu-disclosure" in c_name:
+                        account_menu = o
+                        return
+                    for c in (getattr(o, "children", None) or []):
+                        find_acc(c, depth + 1)
+                find_acc(fg)
+                
+                if account_menu:
+                    account_menu.setFocus()
+                    # Se estiver recolhido, expandir
+                    states = getattr(account_menu, "states", set())
+                    if getattr(controlTypes.State, "EXPANDED", 256) not in states:
+                        try:
+                            account_menu.doAction()
+                        except Exception:
+                            pass
+                        time.sleep(0.4)
+                    
+                    # Aguardar expansão e procurar item 'Configurações'
+                    cfg_target = None
+                    def find_cfg(o, depth=0):
+                        nonlocal cfg_target
+                        if cfg_target or depth > 25:
+                            return
+                        name = (getattr(o, "name", "") or "").lower()
+                        ia2 = getattr(o, "IA2Attributes", None)
+                        cls = ia2.get("class", "") if (ia2 and hasattr(ia2, "items")) else ""
+                        if "configura" in name and ("item" in cls or getattr(o, "role", None) in (ROLE_MENUITEM, ROLE_BUTTON)):
+                            cfg_target = o
+                            return
+                        for c in (getattr(o, "children", None) or []):
+                            find_cfg(c, depth + 1)
+
+                    find_cfg(api.getForegroundObject() or fg)
+                    if not cfg_target:
+                        find_cfg(api.getDesktopObject())
+                    
+                    if cfg_target:
+                        cfg_target.setFocus()
+                        try:
+                            cfg_target.doAction()
+                        except Exception:
+                            pass
+                        ui.message("Configurações do Riot Client abertas.")
+                        return
+        except Exception as e:
+            log.debug(f"lolAccessibility: Erro ao abrir configurações: {e}")
+        ui.message("Não foi possível abrir as configurações do Riot Client.")
+
+    @script(
+        description="Move o foco para as Guias Sociais do Riot Client (Amigos, Conversas, Pedidos).",
+        gestures=["kb:NVDA+shift+o", "kb:control+shift+o"]
+    )
+    def script_focusSocialTabs(self, gesture):
+        """Localiza a primeira ou a guia ativa no painel social e transfere o foco."""
+        try:
+            fg = api.getForegroundObject()
+            if fg:
+                tab_target = None
+                def find_tab(o, depth=0):
+                    nonlocal tab_target
+                    if tab_target or depth > 25:
+                        return
+                    ia2 = getattr(o, "IA2Attributes", None)
+                    cls_name = ia2.get("class", "") if (ia2 and hasattr(ia2, "items")) else ""
+                    loc = getattr(o, "location", None)
+                    if "tab-button" in cls_name and loc and loc.left > 1400:
+                        states = getattr(o, "states", set())
+                        if getattr(controlTypes.State, "SELECTED", 4) in states:
+                            tab_target = o
+                            return
+                        if not tab_target:
+                            tab_target = o
+                    for c in (getattr(o, "children", None) or []):
+                        find_tab(c, depth + 1)
+                find_tab(fg)
+                if tab_target:
+                    tab_target.setFocus()
+                    return
+        except Exception as e:
+            log.debug(f"lolAccessibility: Erro ao focar abas sociais: {e}")
+        ui.message("Guias sociais não localizadas na tela atual.")
+
+    @script(
         description="Exibe os atalhos de acessibilidade do Riot Client e League of Legends.",
         gestures=["kb:f1"]
     )
     def script_help(self, gesture):
         help_text = (
             "Atalhos de Acessibilidade Riot & LoL: "
+            "Control+Shift+U: Menu da Conta, Perfil e Status. "
+            "Control+Shift+P: Abrir Configurações do Riot Client. "
+            "Control+Shift+O: Guias Sociais (Amigos, Conversas, Pedidos). "
             "Control+Shift+J: Iniciar League of Legends diretamente ou acionar botão principal. "
             "Control+Shift+T: Aceitar Termos de Serviço (ToS) automaticamente. "
             "Control+Shift+F: Anunciar amigos online e jogos em execução. "
@@ -921,5 +1189,6 @@ class AppModule(appModuleHandler.AppModule):
             "Control+Shift+C: Informações da seleção de campeões."
         )
         ui.message(help_text)
+
 
 

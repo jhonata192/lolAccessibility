@@ -1133,6 +1133,132 @@ def test_riot_client_rea_enhancements():
     print("OK: Melhorias do Riot Client derivadas de engenharia reversa (REA) e testes ao vivo com NVDA MCP Bridge 100% validadas.")
 
 
+def test_upper_menus_and_social_tabs():
+    """Valida a acessibilidade dos menus superiores, abas sociais e configurações no Riot Client."""
+    print("Testando acessibilidade dos menus superiores, abas sociais e configurações...")
+    riot_py = os.path.join(ROOT_DIR, "appModules", "riotclient.py")
+    with open(riot_py, "r", encoding="utf-8") as f:
+        src = f.read()
+
+    # 1. Validação de constantes e precedência de overlay
+    assert "ROLE_POPUPMENU" in src
+    assert "ROLE_MENUITEM" in src
+    assert 'role == ROLE_TAB or "tab-button" in class_name' in src
+    
+    # Garantir que a checagem de tab-button ocorre antes de silenciar animações
+    tab_idx = src.find('role == ROLE_TAB or "tab-button"')
+    anim_idx = src.find('role == ROLE_ANIMATION')
+    assert tab_idx != -1 and anim_idx != -1
+    assert tab_idx < anim_idx, "As abas sociais devem ter precedência de overlay sobre animações Lottie!"
+
+    # 2. Validação dos elementos do Menu da Conta e Configurações
+    assert "identity-menu-disclosure" in src
+    assert "identity-menu-item" in src
+    assert "settings-navigation-item" in src
+    assert "riot-modal-close" in src
+    assert "Fechar configurações" in src
+    assert "Menu da Conta:" in src
+
+    # 3. Validação dos atalhos de navegação rápida
+    assert "script_focusAccountMenu" in src
+    assert "script_openSettings" in src
+    assert "script_focusSocialTabs" in src
+    assert "kb:control+shift+u" in src
+    assert "kb:control+shift+p" in src
+    assert "kb:control+shift+o" in src
+    assert "Control+Shift+U: Menu da Conta" in src
+    assert "Control+Shift+P: Abrir Configurações" in src
+    assert "Control+Shift+O: Guias Sociais" in src
+
+    # 4. Mock funcional para validação direta de RiotSmartTab e RiotSmartButton
+    import types
+    for mod in ["appModuleHandler", "controlTypes", "ui", "api", "NVDAObjects", "scriptHandler", "logHandler"]:
+        if mod not in sys.modules:
+            m = types.ModuleType(mod)
+            sys.modules[mod] = m
+    if not hasattr(sys.modules["appModuleHandler"], "AppModule"):
+        sys.modules["appModuleHandler"].AppModule = object
+    if not hasattr(sys.modules["controlTypes"], "Role"):
+        sys.modules["controlTypes"].Role = types.SimpleNamespace(
+            TAB=22, BUTTON=9, LINK=30, ANIMATION=54, GRAPHIC=40, DOCUMENT=53, PANE=16, POPUPMENU=102, MENUITEM=11
+        )
+    if not hasattr(sys.modules["controlTypes"], "State"):
+        sys.modules["controlTypes"].State = types.SimpleNamespace(SELECTED=4)
+    if not hasattr(sys.modules["NVDAObjects"], "NVDAObject"):
+        sys.modules["NVDAObjects"].NVDAObject = object
+    if not hasattr(sys.modules["scriptHandler"], "script"):
+        sys.modules["scriptHandler"].script = lambda *a, **k: (lambda f: f)
+    if not hasattr(sys.modules["logHandler"], "log"):
+        sys.modules["logHandler"].log = types.SimpleNamespace(info=lambda *a: None, debug=lambda *a: None, error=lambda *a: None)
+
+    from appModules.riotclient import RiotSmartTab, RiotSmartButton, SOCIAL_TAB_INDEX_NAMES
+
+    class MockTab(RiotSmartTab):
+        def __init__(self, pos, setsize=3, raw_name="animation"):
+            self._pos = str(pos)
+            self._setsize = str(setsize)
+            self._name = raw_name
+            self.parent = None
+            self.children = []
+            self.location = None
+        @property
+        def name(self):
+            return self._name
+        @property
+        def IA2Attributes(self):
+            return {"class": "tab-button", "tag": "button", "posinset": self._pos, "setsize": self._setsize}
+
+    tab1 = MockTab(1)
+    assert tab1._get_name() == "Amigos"
+    assert tab1._get_role() == 22
+    assert tab1._get_roleText() == "guia"
+    assert tab1._get_positionInGroup() == (1, 3)
+
+    tab2 = MockTab(2)
+    assert tab2._get_name() == "Conversas"
+    assert tab2._get_positionInGroup() == (2, 3)
+
+    tab3 = MockTab(3)
+    assert tab3._get_name() == "Pedidos de amizade"
+    assert tab3._get_positionInGroup() == (3, 3)
+
+    class MockChild:
+        def __init__(self, name):
+            self.name = name
+            self.children = []
+            self.IA2Attributes = {}
+
+    class MockBtn(RiotSmartButton):
+        def __init__(self, class_name, raw_name, children=None):
+            self._class = class_name
+            self._name = raw_name
+            self._children = children or []
+            self.location = None
+        @property
+        def name(self):
+            return self._name
+        @property
+        def children(self):
+            return self._children
+        @property
+        def IA2Attributes(self):
+            return {"class": self._class, "tag": "button"}
+
+    acc_btn = MockBtn("identity-menu-disclosure", "Habilitar autenticação multifator")
+    acc_name = acc_btn._get_name()
+    assert "Menu da Conta:" in acc_name
+    assert "Online" in acc_name
+    assert "Habilitar autenticação multifator" in acc_name
+    assert acc_btn._get_role() == 102
+
+    close_btn = MockBtn("riot-modal-close", "Fechar")
+    assert close_btn._get_name() == "Fechar configurações"
+
+    nav_item = MockBtn("settings-navigation-item", "", children=[MockChild("GERAL")])
+    assert nav_item._get_name() == "Geral"
+
+    print("OK: Menus superiores, abas sociais e configurações validados com 100% de sucesso.")
+
 
 if __name__ == "__main__":
     test_syntax()
@@ -1156,7 +1282,9 @@ if __name__ == "__main__":
     test_tos_helper()
     test_lcu_reverse_engineering_and_vanguard()
     test_riot_client_rea_enhancements()
+    test_upper_menus_and_social_tabs()
     print("\nTodos os testes unitários passaram com 100% de sucesso!")
+
 
 
 

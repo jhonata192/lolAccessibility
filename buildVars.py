@@ -6,7 +6,7 @@ addon_info = {
     "addon_description": (
         "Melhora significativamente a acessibilidade do Riot Client e do League of Legends para usuários do NVDA."
     ),
-    "addon_version": "1.4.0",
+    "addon_version": "1.5.0",
     "addon_author": "Jhonata <jhonata@acessibilidade.dev>",
     "addon_url": "https://github.com/jhonata192/lolAccessibility",
     "addon_docFileName": "readme.html",
