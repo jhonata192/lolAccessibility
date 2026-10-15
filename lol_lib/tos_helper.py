@@ -41,11 +41,15 @@ try:
         except Exception:
             pass
 except Exception:
-    import winsound
-    def _beep(freq, dur):
-        try:
-            winsound.Beep(freq, dur)
-        except Exception:
+    try:
+        import winsound
+        def _beep(freq, dur):
+            try:
+                winsound.Beep(freq, dur)
+            except Exception:
+                pass
+    except Exception:
+        def _beep(freq, dur):
             pass
 
 # Win32 Constants
