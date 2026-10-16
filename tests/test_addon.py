@@ -1554,6 +1554,9 @@ def test_league_client_npe_and_navigation():
         sys.modules["scriptHandler"].getLastScriptRepeatCount = lambda: 0
 
     from appModules.leagueclient import (
+        LeagueDocument,
+        LeagueSystemMessage,
+        LeagueTimerBadge,
         LeagueTutorialCard,
         LeagueSummonerBadge,
         LeagueChatInput,
@@ -1645,12 +1648,16 @@ def test_league_client_npe_and_navigation():
 
     btn_left = MockLBtn("npe-tutorial-carousel-arrow npe-tutorial-carousel-left-arrow")
     assert btn_left._get_name() == "Tutorial anterior"
+    assert btn_left._get_role() == 9
 
     btn_right = MockLBtn("npe-tutorial-carousel-arrow npe-tutorial-carousel-right-arrow")
     assert btn_right._get_name() == "Próximo tutorial"
 
-    btn_close = MockLBtn("", tag="lol-uikit-close-button", name="")
-    assert btn_close._get_name() == "Fechar"
+    btn_close_tut = MockLBtn("arrow-footer", tag="lol-uikit-close-button", name="")
+    assert btn_close_tut._get_name() == "Fechar tutoriais"
+
+    btn_close_app = MockLBtn("app-controls-close", tag="lol-uikit-close-button", name="")
+    assert btn_close_app._get_name() == "Fechar League of Legends"
 
     btn_min = MockLBtn("app-controls-minimize")
     assert btn_min._get_name() == "Minimizar League of Legends"
@@ -1663,6 +1670,56 @@ def test_league_client_npe_and_navigation():
 
     btn_rp = MockLBtn("currency-rp")
     assert btn_rp._get_name() == "Riot Points (RP)"
+
+    # 7. Testar LeagueDocument (orientação contextual e supressão de documento em branco)
+    doc_obj = LeagueDocument()
+    assert doc_obj._get_treeInterceptorClass() is None
+    doc_name = doc_obj._get_name()
+    assert "League of Legends" in doc_name
+    assert doc_obj._get_roleText() == "painel"
+
+    # 8. Testar LeagueSystemMessage e LeagueTimerBadge
+    class MockSysMsg(LeagueSystemMessage):
+        def __init__(self, children):
+            self.children = children
+            self.location = None
+        @property
+        def name(self):
+            return ""
+
+    m1 = types.SimpleNamespace(name="Lembre-se de que funcionários da Riot nunca pedirão sua senha.", children=[], IA2Attributes={})
+    sys_msg = MockSysMsg([m1])
+    assert "funcionários da Riot nunca pedirão sua senha" in sys_msg._get_name()
+    assert sys_msg._get_role() == 7
+
+    class MockTimer(LeagueTimerBadge):
+        def __init__(self, children):
+            self.children = children
+            self.location = None
+        @property
+        def name(self):
+            return ""
+
+    t1 = types.SimpleNamespace(name="5:30", children=[], IA2Attributes={})
+    t2 = types.SimpleNamespace(name="estimativa", children=[], IA2Attributes={})
+    # 9. Testar LeagueChatInput e makeTextInfo seguro
+    class MockChatInput(LeagueChatInput):
+        def __init__(self, value=""):
+            self.value = value
+            self.location = None
+
+    chat_input = MockChatInput("Olá time!")
+    assert "Bate-papo do LoL" in chat_input._get_name()
+    assert chat_input._get_role() == 8
+    ti = chat_input.makeTextInfo(1)
+    assert ti._getStoryText() == "Olá time!"
+    assert ti._getStoryLength() == 9
+    assert ti._getTextRange(0, 4) == "Olá "
+
+    empty_chat = MockChatInput("")
+    ti_empty = empty_chat.makeTextInfo(1)
+    assert ti_empty._getStoryText() == ""
+    assert ti_empty._getStoryLength() == 0
 
     print("OK: Acessibilidade do League Client (NPE, Tutorial, Badges e Navegação) 100% validada.")
 

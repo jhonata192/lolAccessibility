@@ -82,7 +82,7 @@ O **lolAccessibility** é um add-on completo para o leitor de telas **NVDA** que
 | :--- | :--- |
 | `F6` ou `NVDA + F6` | **Aceitar partida encontrada (Ready Check)** instantaneamente. |
 | `Control + Shift + F6` | Ativar / Desativar a **Aceitação Automática** de partidas. |
-| `Control + Shift + T` ou `NVDA + Shift + T` | **Rolar e Aceitar Termos de Serviço (ToS)** automaticamente. |
+| `Control + Shift + T` ou `NVDA + Shift + T` | **Jornada de Tutoriais / ToS**: 1 toque anuncia o progresso e lista de tutoriais; toque duplo inicia a próxima missão. Se houver modal de Termos de Serviço, rola e aceita automaticamente. |
 | `Control + Shift + P` ou `NVDA + Shift + P` | **Escolher e Travar Campeão** (com runas e feitiços automáticos). |
 | `Control + Shift + B` ou `NVDA + Shift + B` | **Banco do ARAM** (trocar campeão) ou **Banir Campeão**. |
 | `Control + Shift + D` ou `NVDA + Shift + D` | **Rolar Dado no ARAM** (ou ver download no Launcher). |
@@ -90,7 +90,7 @@ O **lolAccessibility** é um add-on completo para o leitor de telas **NVDA** que
 | `Control + Shift + O` ou `NVDA + Shift + O` | **Escolher Rotas no Saguão** (Top, Jungle, Mid, Bot, Sup). |
 | `Control + Shift + C` ou `NVDA + Shift + C` | **Detalhes da Seleção de Campeões** (fase, time, campeão e timer). |
 | `Control + Shift + J` ou `NVDA + Shift + J` | Iniciar busca de partida, aceitar termos ou interagir com tutoriais. |
-| `Control + Shift + S` ou `NVDA + Shift + S` | Perfil do invocador (nível, XP e ranqueada). |
+| `Control + Shift + S` ou `NVDA + Shift + S` | Perfil do invocador (nível, XP e ranqueada) ou status da tela ativa. |
 | `Control + Shift + Escape` | Fechar e confirmar diálogos/termos modais pendentes. |
 
 ### Durante a Partida ao Vivo (In-Game - 127.0.0.1:2999)

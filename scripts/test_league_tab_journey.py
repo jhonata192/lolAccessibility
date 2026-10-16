@@ -26,6 +26,7 @@ import api
 import ctypes
 
 user32 = ctypes.windll.user32
+kernel32 = ctypes.windll.kernel32
 desktop = api.getDesktopObject()
 target_hwnd = None
 for child in desktop.children:
@@ -35,8 +36,14 @@ for child in desktop.children:
         break
 
 if target_hwnd:
+    fg_hwnd = user32.GetForegroundWindow()
+    fg_tid = user32.GetWindowThreadProcessId(fg_hwnd, None)
+    cur_tid = kernel32.GetCurrentThreadId()
+    user32.AttachThreadInput(cur_tid, fg_tid, True)
     user32.ShowWindow(target_hwnd, 9)
     user32.SetForegroundWindow(target_hwnd)
+    user32.SetFocus(target_hwnd)
+    user32.AttachThreadInput(cur_tid, fg_tid, False)
     result = {"success": True, "hwnd": target_hwnd}
 else:
     result = {"success": False}
@@ -55,10 +62,14 @@ class Capturer:
     def speak(cls, s, *a, **k):
         cls.captured.extend([str(x) for x in s if isinstance(x, str)])
 
+Capturer.captured = []
 old_speak = speech.speech.speak
 speech.speech.speak = Capturer.speak
 try:
-    speech.speakObject(focus, reason=controlTypes.OutputReason.FOCUS)
+    try:
+        speech.speakObject(focus, reason=controlTypes.OutputReason.FOCUS)
+    except Exception as _e:
+        Capturer.captured.append(f"[speak error: {_e}]")
 finally:
     speech.speech.speak = old_speak
 

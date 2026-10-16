@@ -867,10 +867,47 @@ class LeagueChromeVBuf(ChromeVBuf):
 
 class LeagueDocument(NVDAObjects.NVDAObject):
     """Documento do League Client (CEF).
-    Desativa o buffer virtual para garantir navegação limpa e direta por foco (Tab / Shift+Tab).
+    Desativa o buffer virtual para garantir navegação limpa e direta por foco (Tab / Shift+Tab)
+    e transforma paradas vazias em anúncios contextuais da tela ativa.
     """
     def _get_treeInterceptorClass(self):
         return None
+
+    def _get_name(self):
+        try:
+            if callable(get_lcu_npe_status):
+                npe = get_lcu_npe_status()
+                if npe and npe.get("has_tutorials"):
+                    comp = npe.get("completed_count", 0)
+                    tot = npe.get("total_count", 4)
+                    return f"League of Legends - Jornada de Tutoriais ({comp} de {tot} concluídos)"
+        except Exception:
+            pass
+        try:
+            if callable(get_lcu_gameflow_phase):
+                phase = get_lcu_gameflow_phase()
+                if phase == "ChampSelect":
+                    return "League of Legends - Seleção de Campeões"
+                elif phase == "ReadyCheck":
+                    return "League of Legends - Partida Encontrada"
+                elif phase == "Lobby":
+                    return "League of Legends - Saguão Principal"
+                elif phase == "Matchmaking":
+                    return "League of Legends - Buscando Partida"
+        except Exception:
+            pass
+        return "League of Legends - Interface Principal"
+
+    def _get_role(self):
+        return getattr(controlTypes.Role, "PANE", 27)
+
+    def _get_roleText(self):
+        return "painel"
+
+    def event_gainFocus(self):
+        title = self._get_name()
+        if ui:
+            ui.message(f"{title}, painel")
 
 
 class LeagueDecorativeAnimation(NVDAObjects.NVDAObject):
@@ -962,6 +999,36 @@ class LeagueCustomComponent(NVDAObjects.NVDAObject):
         if raw_name.startswith("lol-uikit-"):
             return "Elemento de interface"
         return raw_name
+
+
+class LeagueSystemMessage(NVDAObjects.NVDAObject):
+    """Mensagens de aviso e sistema do League Client (avisos de segurança, chat, penalidades)."""
+    def _get_role(self):
+        return getattr(controlTypes.Role, "STATICTEXT", 7)
+
+    def _get_name(self):
+        try:
+            raw_name = (super().name or "").strip()
+        except Exception:
+            raw_name = getattr(self, "_name", "") or getattr(self, "name", "") or ""
+        if raw_name:
+            return raw_name
+        texts = extract_all_inner_text(self, max_depth=4)
+        if texts:
+            return " ".join(texts)
+        return "Aviso do sistema"
+
+
+class LeagueTimerBadge(NVDAObjects.NVDAObject):
+    """Cronômetro e estimativas de fila ou tutoriais."""
+    def _get_role(self):
+        return getattr(controlTypes.Role, "STATICTEXT", 7)
+
+    def _get_name(self):
+        texts = extract_all_inner_text(self, max_depth=4)
+        if texts:
+            return " ".join(texts)
+        return "Tempo estimado"
 
 
 class LeagueTutorialCard(NVDAObjects.NVDAObject):
@@ -1164,6 +1231,35 @@ class LeagueChatInput(NVDAObjects.NVDAObject):
     def _get_name(self):
         return "Bate-papo do LoL: Digite sua mensagem (Pressione Enter para enviar)"
 
+    def makeTextInfo(self, position):
+        if hasattr(super(), "makeTextInfo"):
+            try:
+                return super().makeTextInfo(position)
+            except Exception:
+                pass
+        try:
+            from textInfos.offsets import OffsetsTextInfo
+            class _SafeChatTextInfo(OffsetsTextInfo):
+                def _getStoryLength(self):
+                    return len(self._getStoryText())
+                def _getStoryText(self):
+                    return getattr(self.obj, 'value', '') or ''
+                def _getTextRange(self, start, end):
+                    return self._getStoryText()[start:end]
+            return _SafeChatTextInfo(self, position)
+        except Exception:
+            class _FallbackChatTextInfo:
+                def __init__(self, obj, pos):
+                    self.obj = obj
+                    self.position = pos
+                def _getStoryLength(self):
+                    return len(self._getStoryText())
+                def _getStoryText(self):
+                    return getattr(self.obj, 'value', '') or ''
+                def _getTextRange(self, start, end):
+                    return self._getStoryText()[start:end]
+            return _FallbackChatTextInfo(self, position)
+
 
 class LeagueSmartTab(NVDAObjects.NVDAObject):
     """Nomeia guias e abas do cliente do League of Legends."""
@@ -1200,13 +1296,17 @@ class LeagueSmartTab(NVDAObjects.NVDAObject):
 
 class LeagueSmartButton(NVDAObjects.NVDAObject):
     """Nomeia botões sem rótulo do cliente do League of Legends."""
+
+    def _get_role(self):
+        return getattr(controlTypes.Role, "BUTTON", 9)
+
     def _get_name(self):
         try:
             raw_name = (super().name or "").strip()
         except Exception:
             raw_name = getattr(self, "_name", "") or getattr(self, "name", "") or ""
         auto_id, class_name, tag = get_element_identifiers(self)
-        target = f"{auto_id} {class_name} {tag}"
+        target = f"{auto_id} {class_name} {tag}".lower()
 
         # 1. NPE / Tutorial specific buttons
         if "npe-tutorial-carousel-left-arrow" in class_name:
@@ -1214,6 +1314,12 @@ class LeagueSmartButton(NVDAObjects.NVDAObject):
         elif "npe-tutorial-carousel-right-arrow" in class_name:
             return "Próximo tutorial"
         elif tag == "lol-uikit-close-button" or "hide-close-button" in class_name:
+            if "arrow-footer" in target or "footer" in target or "carousel" in target:
+                return "Fechar tutoriais"
+            elif "app-controls" in target:
+                return "Fechar League of Legends"
+            elif "toast" in target or "modal" in target:
+                return "Fechar aviso"
             return "Fechar"
         elif "cta-button" in class_name or "npe-footer" in class_name or "play-button" in target or raw_name.upper() in ("COMEÇAR", "START"):
             tut_name = ""
@@ -1332,6 +1438,10 @@ class AppModule(appModuleHandler.AppModule):
                 clsList.insert(0, LeagueSmartButton)
             elif role == ROLE_ANIMATION or "animation" in class_name:
                 clsList.insert(0, LeagueDecorativeAnimation)
+            elif "warning-message" in class_name or "system-message" in class_name:
+                clsList.insert(0, LeagueSystemMessage)
+            elif "npe-tutorial-timer" in class_name or "matchmaking-timer" in class_name or "timer" in class_name:
+                clsList.insert(0, LeagueTimerBadge)
             elif (obj.name or "").lower().startswith("lol-uikit-") or "lol-uikit" in class_name:
                 clsList.insert(0, LeagueCustomComponent)
         except Exception as e:
@@ -1642,7 +1752,74 @@ class AppModule(appModuleHandler.AppModule):
         elif phase == "InProgress":
             ui.message(f"Partida carregando ou em andamento.{sum_str}")
         else:
+            try:
+                if callable(get_lcu_npe_status):
+                    npe = get_lcu_npe_status()
+                    if npe and npe.get("has_tutorials"):
+                        comp = npe.get("completed_count", 0)
+                        tot = npe.get("total_count", 4)
+                        active_t = ""
+                        for tut in npe.get("tutorials", []):
+                            if tut.get("status") in ("UNLOCKED", "IN_PROGRESS") and tut.get("type") != "REWARD":
+                                active_t = f". Próximo: {tut.get('title')}"
+                                break
+                        ui.message(f"No Menu de Tutoriais (Novo Jogador). {comp} de {tot} concluídos{active_t}. Pressione Control+Shift+T para detalhes ou Enter no botão iniciar.{sum_str}")
+                        return
+            except Exception:
+                pass
             ui.message(f"League of Legends conectado no Início / Hub principal.{sum_str}")
+
+    @script(
+        description="Anuncia os tutoriais da Jornada de Iniciante do League of Legends e seu status. Pressione duas vezes para iniciar a missão disponível.",
+        gestures=["kb:NVDA+shift+t", "kb:control+shift+t"]
+    )
+    def script_announceTutorials(self, gesture):
+        try:
+            npe = get_lcu_npe_status()
+            if not npe or not npe.get("has_tutorials"):
+                ui.message("Nenhum tutorial pendente no momento. Você está no hub principal do League of Legends.")
+                return
+
+            tutorials = npe.get("tutorials", [])
+            comp = npe.get("completed_count", 0)
+            tot = npe.get("total_count", len(tutorials))
+
+            repeat = getLastScriptRepeatCount()
+            if repeat >= 1:
+                target_t = 1
+                tut_title = ""
+                for t in tutorials:
+                    if not t.get("completed") and t.get("type") != "REWARD":
+                        target_t = t.get("stepNumber", 1)
+                        tut_title = t.get("title", f"Tutorial {t.get('stepNumber', '')}")
+                        break
+                ok, msg = start_lcu_tutorial_mission(target_t)
+                if ok:
+                    tones.beep(1100, 150)
+                    ui.message(f"Iniciando missão: {tut_title or msg}")
+                else:
+                    tones.beep(330, 200)
+                    ui.message(msg)
+                return
+
+            lines = [f"Jornada de Tutoriais do LoL: {comp} de {tot} concluídos."]
+            for t in tutorials:
+                t_type = t.get("type", "CARD")
+                t_step = t.get("stepNumber", "")
+                t_title = t.get("title", "")
+                t_status = t.get("status", "LOCKED")
+                st_pt = "Concluído" if t.get("completed") else ("Disponível" if t_status in ("UNLOCKED", "IN_PROGRESS") else "Bloqueado")
+                if t_type == "REWARD":
+                    rew = t.get("rewards", ["Recompensa"])[0] if t.get("rewards") else "Recompensa"
+                    lines.append(f"Recompensa: {rew} ({st_pt}).")
+                else:
+                    lines.append(f"Tutorial {t_step}: {t_title} ({st_pt}).")
+
+            lines.append("Pressione duas vezes para iniciar diretamente o próximo tutorial.")
+            ui.message(" ".join(lines))
+        except Exception as e:
+            log.debug(f"lolAccessibility: Erro ao anunciar tutoriais: {e}")
+            ui.message("Não foi possível carregar os tutoriais no momento.")
 
     @script(
         description="Anuncia o perfil do invocador (nome, nível, progresso de XP e classificação ranqueada).",
